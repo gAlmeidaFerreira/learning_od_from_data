@@ -64,7 +64,7 @@ $$
 $$
 
 - Certainty settles at $\kappa^* = \eta/(1-\delta)$; classical DeGroot with self-weight $\delta$ is the limiting case.
-- Process noise in $(\operatorname{logit} m, \log\kappa)$ coordinates to keep $a, b > 0$.
+- Process noise in $(\mathrm{logit}\, m, \log\kappa)$ coordinates to keep $a, b > 0$.
 - Alternative variant to compare: logarithmic pool (agents share full beliefs), $\boldsymbol\alpha_t = W\boldsymbol\alpha_{t-1}$.
 - Truth models: stochastic opinion-dynamics models.
 
