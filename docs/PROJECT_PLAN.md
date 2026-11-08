@@ -91,7 +91,8 @@ The repository starts small and grows one verified step at a time.
 | `src/simulate.py` | Ground truth $x$, $s$, $Y$ and posting mask $P$ | Empty |
 | `src/particle_filter.py` | Log-likelihood estimator | Empty |
 | `checks/check_kalman.py` | Particle filter vs. joint Kalman filter | Empty |
-| `notebooks/01_simulate_and_filter.ipynb` | Exploration and plots | Empty |
+| `notebooks/01_sanity_checks.ipynb` | Sanity checks of the model layer (classical limit, noise, reproducibility) | DeGroot checks passing |
+| `notebooks/02_simulate_and_filter.ipynb` | Simulation and filtering exploration and plots | Empty |
 
 - Pass `rng = np.random.default_rng(seed)` explicitly; no global randomness.
 - Dynamics chosen by a dispatch dictionary; unsupported models raise an error.
