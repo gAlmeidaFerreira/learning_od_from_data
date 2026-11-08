@@ -98,6 +98,7 @@ The repository starts small and grows one verified step at a time.
 - Dynamics chosen by a dispatch dictionary; unsupported models raise an error.
 - One config file per experiment; save the config next to every result.
 - Split `model.py` into dynamics, observation and network files when FJ arrives.
+- Every new dynamics model gets its own section in `notebooks/01_sanity_checks.ipynb` (classical limit, noise behaviour, reproducibility) before it is used anywhere else.
 - Config still to add: `thresholds`.
 
 ## Decisions and open questions
@@ -106,6 +107,7 @@ Decisions are logged newest first; add a row whenever the plan changes.
 
 | Date | Decision |
 | --- | --- |
+| 2026-11-08 | `01_sanity_checks.ipynb` is the shared sanity-check notebook for all dynamics models; DeGroot checks pass |
 | 2026-11-08 | Formulas written in LaTeX (`$…$` inline, `$$…$$` display) instead of code blocks |
 | 2026-11-08 | Posting mask $P$ built in from the start (all ones in Phase 1.1–1.3) |
 | 2026-11-08 | Expression is scalar; only the observation is discrete (5 levels, ordered probit) |
