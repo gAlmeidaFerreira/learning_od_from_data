@@ -1,5 +1,5 @@
-numpy
-networkx
-matplotlib
-pyyaml
-jupyter
+numpy>=1.26
+networkx>=3.2
+matplotlib>=3.8
+pyyaml>=6.0
+jupyter>=1.0

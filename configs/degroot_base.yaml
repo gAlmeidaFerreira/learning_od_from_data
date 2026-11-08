@@ -1,1 +1,21 @@
 # Parameters for the baseline DeGroot simulation.
+
+seed: 42                      # random seed for network, simulation and filter
+
+network:
+  type: watts_strogatz        # small-world graph generator
+  n_agents: 50                # number of agents (nodes)
+  k: 4                        # each node starts connected to its k nearest neighbours
+  p: 0.1                      # rewiring probability of each edge
+
+simulation:
+  T: 100                      # number of time steps to simulate
+
+model:                        # true parameters used to generate the data
+  dynamics: degroot           # opinion update rule
+  stubbornness: 0.3           # weight each agent keeps on its initial opinion
+  process_noise_sd: 0.05      # std. dev. of noise added to each opinion update
+  measurement_noise_sd: 0.2   # std. dev. of noise on observed opinions
+
+filter:
+  n_particles: 500            # number of particles in the particle filter
