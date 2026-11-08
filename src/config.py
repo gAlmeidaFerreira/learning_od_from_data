@@ -28,9 +28,11 @@ class ModelParams:
     """True parameters used to generate the data."""
 
     dynamics: str
-    stubbornness: float
+    self_weight: float
     process_noise_sd: float
+    expression_noise_sd: float
     measurement_noise_sd: float
+    observation: str
 
 
 @dataclass(frozen=True)

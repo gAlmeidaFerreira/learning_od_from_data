@@ -87,7 +87,7 @@ The repository starts small and grows one verified step at a time.
 | --- | --- | --- |
 | `configs/degroot_base.yaml` | Parameter values for one run | Filled |
 | `src/config.py` | Loads YAML into strict dataclasses | Implemented |
-| `src/model.py` | Network, dynamics, expression and observation layers | Empty |
+| `src/model.py` | Network, dynamics, expression and observation layers | DeGroot implemented (continuous observation) |
 | `src/simulate.py` | Ground truth $x$, $s$, $Y$ and posting mask $P$ | Empty |
 | `src/particle_filter.py` | Log-likelihood estimator | Empty |
 | `checks/check_kalman.py` | Particle filter vs. joint Kalman filter | Empty |
@@ -97,7 +97,7 @@ The repository starts small and grows one verified step at a time.
 - Dynamics chosen by a dispatch dictionary; unsupported models raise an error.
 - One config file per experiment; save the config next to every result.
 - Split `model.py` into dynamics, observation and network files when FJ arrives.
-- Config still to add: `expression_noise_sd`, `measurement_noise_sd`, `thresholds`, `observation` (continuous | ordinal); rename `stubbornness` to `self_weight` for DeGroot.
+- Config still to add: `thresholds`.
 
 ## Decisions and open questions
 
