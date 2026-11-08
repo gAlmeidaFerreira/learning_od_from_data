@@ -18,13 +18,13 @@ def build_network(cfg: NetworkConfig, rng: np.random.Generator) -> tuple[nx.Grap
         raise ValueError(f"Unsupported network type: {cfg.type!r}")
     graph = nx.watts_strogatz_graph(cfg.n_agents, cfg.k, cfg.p, seed=int(rng.integers(2**32)))
 
-    A = nx.to_numpy_array(graph, nodelist=range(cfg.n_agents))
-    np.fill_diagonal(A, 0.0)
-    deg = A.sum(axis=1)
-    isolated = deg == 0
-    A[isolated, isolated] = 1.0
-    deg[isolated] = 1.0
-    W = A / deg[:, None]
+    adjacency = nx.to_numpy_array(graph, nodelist=range(cfg.n_agents))
+    np.fill_diagonal(adjacency, 0.0)
+    degree = adjacency.sum(axis=1)
+    isolated = degree == 0
+    adjacency[isolated, isolated] = 1.0
+    degree[isolated] = 1.0
+    W = adjacency / degree[:, None]
     return graph, W
 
 
@@ -40,9 +40,9 @@ def degroot_step(
     x_t = λ x_{t-1} + (1-λ) W s_{t-1} + ε_t,  ε_t ~ N(0, σ_p² I).
     Accepts shape (n,) or batched (N, n).
     """
-    lam = params.self_weight
+    self_weight = params.self_weight
     noise = rng.normal(0.0, params.process_noise_sd, size=x_prev.shape)
-    return lam * x_prev + (1.0 - lam) * (s_prev @ W.T) + noise
+    return self_weight * x_prev + (1.0 - self_weight) * (s_prev @ W.T) + noise
 
 
 DYNAMICS: dict[str, Callable[..., np.ndarray]] = {"degroot": degroot_step}
