@@ -89,7 +89,7 @@ The repository starts small and grows one verified step at a time.
 | `configs/degroot_base.yaml` | Parameter values for one run | Filled |
 | `src/config.py` | Loads YAML into strict dataclasses | Implemented |
 | `src/model.py` | Network, dynamics, expression and observation layers | DeGroot implemented (continuous observation) |
-| `src/simulate.py` | Ground truth $x$, $s$, $Y$ and posting mask $P$ | Empty |
+| `src/simulate.py` | Ground truth $x$, $s$, $Y$ and posting mask $P$ | Implemented (Gaussian x0, save/load) |
 | `src/particle_filter.py` | Log-likelihood estimator | Empty |
 | `checks/check_kalman.py` | Particle filter vs. joint Kalman filter | Empty |
 | `notebooks/01_sanity_checks.ipynb` | Sanity checks of the model layer (classical limit, noise, reproducibility) | DeGroot checks passing |
@@ -103,7 +103,7 @@ The repository starts small and grows one verified step at a time.
 - One config file per experiment; save the config next to every result.
 - Split `model.py` into dynamics, observation and network files when FJ arrives.
 - Every new dynamics model gets its own section in `notebooks/01_sanity_checks.ipynb` (classical limit, noise behaviour, reproducibility) before it is used anywhere else.
-- Config still to add: `x0_mean`, `x0_sd` (simulation section), `thresholds`.
+- Config still to add: `thresholds`.
 
 ## Decisions and open questions
 

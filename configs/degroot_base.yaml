@@ -10,6 +10,8 @@ network:
 
 simulation:
   T: 100                      # number of time steps to simulate
+  x0_mean: 0.5                # μ_0: mean of the Gaussian prior on initial opinions
+  x0_sd: 0.2                  # σ_0: std. dev. of the Gaussian prior on initial opinions
 
 model:                        # true parameters used to generate the data
   dynamics: degroot           # opinion update rule

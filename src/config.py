@@ -21,6 +21,8 @@ class SimulationConfig:
     """Simulation length."""
 
     T: int
+    x0_mean: float
+    x0_sd: float
 
 
 @dataclass(frozen=True)
