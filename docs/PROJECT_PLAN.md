@@ -27,6 +27,7 @@ Y_{i,t} = k \iff c_{k-1} < s_{i,t} + e_{i,t} \le c_k, \qquad k = 1,\dots,5
 $$
 
 - Noise: process $\varepsilon \sim \mathcal N(0, \sigma_p^2)$, expression $\xi \sim \mathcal N(0, \sigma_e^2)$, measurement $e \sim \mathcal N(0, \sigma_m^2)$.
+- Initial opinions: $x_0 \sim \mathcal N(\mu_0, \sigma_0^2 I)$, so the linear models are exactly linear-Gaussian and the Kalman filter is a correctly specified reference.
 - Model order: DeGroot → FJ (linear) → bounded confidence (nonlinear).
 - Observation switch: continuous $Y = s + e$, or ordinal with 5 levels (ordered probit).
 - Parameters to recover: $\lambda$ (or model equivalents), $\sigma_p$, $\sigma_e$. Keep $\sigma_m$ and the thresholds $c_k$ fixed, assuming a labeled validation set.
@@ -95,11 +96,14 @@ The repository starts small and grows one verified step at a time.
 | `notebooks/02_simulate_and_filter.ipynb` | Simulation and filtering exploration and plots | Empty |
 
 - Pass `rng = np.random.default_rng(seed)` explicitly; no global randomness.
+- Separate random streams for network and data (`SeedSequence(seed).spawn(2)`), so many datasets can be drawn on the same network.
+- Missing posts are `NaN` in $Y$ (where $P$ is false); filters skip them.
+- Every simulated dataset is saved as `.npz` with its config next to it.
 - Dynamics chosen by a dispatch dictionary; unsupported models raise an error.
 - One config file per experiment; save the config next to every result.
 - Split `model.py` into dynamics, observation and network files when FJ arrives.
 - Every new dynamics model gets its own section in `notebooks/01_sanity_checks.ipynb` (classical limit, noise behaviour, reproducibility) before it is used anywhere else.
-- Config still to add: `thresholds`.
+- Config still to add: `x0_mean`, `x0_sd` (simulation section), `thresholds`.
 
 ## Decisions and open questions
 
@@ -107,6 +111,7 @@ Decisions are logged newest first; add a row whenever the plan changes.
 
 | Date | Decision |
 | --- | --- |
+| 2026-11-08 | Simulator: Gaussian initial opinions, separate RNG streams for network and data, missing posts as `NaN`, datasets saved with their config |
 | 2026-11-08 | `01_sanity_checks.ipynb` is the shared sanity-check notebook for all dynamics models; DeGroot checks pass |
 | 2026-11-08 | Formulas written in LaTeX (`$…$` inline, `$$…$$` display) instead of code blocks |
 | 2026-11-08 | Posting mask $P$ built in from the start (all ones in Phase 1.1–1.3) |
