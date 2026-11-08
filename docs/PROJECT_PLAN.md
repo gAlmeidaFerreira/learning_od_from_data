@@ -7,8 +7,8 @@ Nov 8, 2026 · @Guilherme
 The project builds a hidden-state algorithm that learns opinion dynamics from limited, noisy data: latent opinions evolve on a network, people only see each other's expressions, and researchers only see noisy labels of those expressions. Parameters are inferred with a particle-filter likelihood, with the hidden trajectories integrated out.
 
 - **Current phase:** Phase 1, scalar hidden opinions on simulated data.
-- **Next action:** implement DeGroot with continuous observations and check the particle-filter log-likelihood against the joint Kalman filter.
-- **Repository:** project skeleton and config loader in place.
+- **Next action:** implement the joint Kalman filter as the exact likelihood reference for DeGroot with continuous observations, then the particle filter, and compare them in `checks/check_kalman.py`.
+- **Repository:** config loader, DeGroot model, simulator and sanity checks in place.
 
 ## Phase 1 — Scalar hidden opinions vs. classical models
 
@@ -94,7 +94,7 @@ The repository starts small and grows one verified step at a time.
 | `src/simulate.py` | Ground truth $x$, $s$, $Y$ and posting mask $P$ | Implemented (Gaussian x0, save/load) |
 | `src/particle_filter.py` | Log-likelihood estimator | Empty |
 | `checks/check_kalman.py` | Particle filter vs. joint Kalman filter | Empty |
-| `notebooks/01_sanity_checks.ipynb` | Sanity checks of the model layer (classical limit, noise, reproducibility) | DeGroot checks passing |
+| `notebooks/01_sanity_checks.ipynb` | Sanity checks of the model layer (classical limit, noise, reproducibility) | DeGroot and simulator checks passing |
 | `notebooks/02_simulate_and_filter.ipynb` | Simulation and filtering exploration and plots | Empty |
 
 - Pass `rng = np.random.default_rng(seed)` explicitly; no global randomness.
