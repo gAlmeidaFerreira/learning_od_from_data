@@ -26,3 +26,6 @@ htmlcov/
 
 # Outputs
 results/
+
+# Claude Code
+CLAUDE.md
