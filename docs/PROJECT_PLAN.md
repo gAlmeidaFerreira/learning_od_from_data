@@ -28,6 +28,8 @@ $$
 
 - Noise: process $\varepsilon \sim \mathcal N(0, \sigma_p^2)$, expression $\xi \sim \mathcal N(0, \sigma_e^2)$, measurement $e \sim \mathcal N(0, \sigma_m^2)$.
 - Initial opinions: $x_0 \sim \mathcal N(\mu_0, \sigma_0^2 I)$, so the linear models are exactly linear-Gaussian and the Kalman filter is a correctly specified reference.
+- No clipping: in the continuous stage $x$, $s$ and $Y$ live in $\mathbb R$; in the ordinal stage boundedness comes from the outer thresholds ($c_0=-\infty$, $c_5=+\infty$); bounded hidden opinions, if needed, via $\mathrm{logit}\, x$.
+- Baseline noise is moderate ($\sigma_e = 0.05$, $\sigma_m = 0.1$, total observation noise about the size of the opinions' own variation); high- and low-noise regimes are separate configs in the recovery study.
 - Model order: DeGroot → FJ (linear) → bounded confidence (nonlinear).
 - Observation switch: continuous $Y = s + e$, or ordinal with 5 levels (ordered probit).
 - Parameters to recover: $\lambda$ (or model equivalents), $\sigma_p$, $\sigma_e$. Keep $\sigma_m$ and the thresholds $c_k$ fixed, assuming a labeled validation set.
@@ -111,6 +113,8 @@ Decisions are logged newest first; add a row whenever the plan changes.
 
 | Date | Decision |
 | --- | --- |
+| 2026-11-08 | No clipping of opinions or observations: it breaks the Kalman reference and biases a Gaussian likelihood; the ordinal observation handles bounds |
+| 2026-11-08 | Baseline noise lowered to $\sigma_e = 0.05$, $\sigma_m = 0.1$ (was 0.1, 0.2, where a single observation was ~85% noise); noise level becomes an experimental axis |
 | 2026-11-08 | Simulator: Gaussian initial opinions, separate RNG streams for network and data, missing posts as `NaN`, datasets saved with their config |
 | 2026-11-08 | `01_sanity_checks.ipynb` is the shared sanity-check notebook for all dynamics models; DeGroot checks pass |
 | 2026-11-08 | Formulas written in LaTeX (`$…$` inline, `$$…$$` display) instead of code blocks |

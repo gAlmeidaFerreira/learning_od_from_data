@@ -17,8 +17,8 @@ model:                        # true parameters used to generate the data
   dynamics: degroot           # opinion update rule
   self_weight: 0.3            # λ: weight an agent keeps on its own previous opinion
   process_noise_sd: 0.05      # σ_p: noise on each opinion update (external forces)
-  expression_noise_sd: 0.1    # σ_e: how much a post deviates from the hidden opinion
-  measurement_noise_sd: 0.2   # σ_m: classifier/measurement noise on each post
+  expression_noise_sd: 0.05   # σ_e: how much a post deviates from the hidden opinion
+  measurement_noise_sd: 0.1   # σ_m: classifier/measurement noise on each post
   observation: continuous     # continuous | ordinal (only continuous implemented)
 
 filter:
