@@ -1,5 +1,7 @@
 # Exact Kalman-filter likelihood for linear-Gaussian DeGroot (reference for the particle filter).
 
+from typing import Literal, overload
+
 import numpy as np
 from scipy.linalg import cho_factor, cho_solve
 from scipy.stats import multivariate_normal
@@ -42,6 +44,26 @@ def state_space(
         [prior_var * identity, (prior_var + expression_var) * identity],
     ])
     return F, Q, H, R, m0, P0
+
+
+@overload
+def kalman_loglik(
+    y: np.ndarray,
+    W: np.ndarray,
+    model_params: ModelParams,
+    sim_params: SimulationConfig,
+    return_filtered: Literal[False] = False,
+) -> float: ...
+
+
+@overload
+def kalman_loglik(
+    y: np.ndarray,
+    W: np.ndarray,
+    model_params: ModelParams,
+    sim_params: SimulationConfig,
+    return_filtered: Literal[True],
+) -> tuple[float, np.ndarray, np.ndarray]: ...
 
 
 def kalman_loglik(
