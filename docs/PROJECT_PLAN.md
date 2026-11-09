@@ -103,6 +103,7 @@ The repository starts small and grows one verified step at a time.
 - Separate random streams for network and data (`SeedSequence(seed).spawn(2)`), so many datasets can be drawn on the same network.
 - Missing posts are `NaN` in $Y$ (where $P$ is false); filters skip them.
 - Every simulated dataset is saved as `.npz` with its config next to it.
+- Performance: keep the code vectorized NumPy; vectorize hot loops (e.g. per-agent resampling) first, then parallelize independent runs across CPU cores (`joblib`/`multiprocessing`); consider JAX on GPU only if a measured run is still too slow (most likely with real data in Phase 3).
 - Dynamics chosen by a dispatch dictionary; unsupported models raise an error.
 - One config file per experiment; save the config next to every result.
 - Split `model.py` into dynamics, observation and network files when FJ arrives.
@@ -115,6 +116,7 @@ Decisions are logged newest first; add a row whenever the plan changes.
 
 | Date | Decision |
 | --- | --- |
+| 2026-11-09 | No GPU for now: a per-agent likelihood evaluation takes ~0.2 s on CPU ($n=50$, $T=100$, $N=500$); parallelize across runs before considering JAX/GPU |
 | 2026-11-09 | Added robustness experiment: fit with a perturbed network to measure sensitivity to network measurement error |
 | 2026-11-08 | No clipping of opinions or observations: it breaks the Kalman reference and biases a Gaussian likelihood; the ordinal observation handles bounds |
 | 2026-11-08 | Baseline noise lowered to $\sigma_e = 0.05$, $\sigma_m = 0.1$ (was 0.1, 0.2, where a single observation was ~85% noise); noise level becomes an experimental axis |
