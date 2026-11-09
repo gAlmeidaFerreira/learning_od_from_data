@@ -7,8 +7,8 @@ Nov 8, 2026 · @Guilherme
 The project builds a hidden-state algorithm that learns opinion dynamics from limited, noisy data: latent opinions evolve on a network, people only see each other's expressions, and researchers only see noisy labels of those expressions. Parameters are inferred with a particle-filter likelihood, with the hidden trajectories integrated out.
 
 - **Current phase:** Phase 1, scalar hidden opinions on simulated data.
-- **Next action:** implement the joint Kalman filter as the exact likelihood reference for DeGroot with continuous observations, then the particle filter, and compare them in `checks/check_kalman.py`.
-- **Repository:** config loader, DeGroot model, simulator and sanity checks in place.
+- **Next action:** implement the particle filter (joint version first, on a small network) and compare its log-likelihood with the Kalman reference in `checks/check_kalman.py`.
+- **Repository:** config loader, DeGroot model, simulator, exact Kalman likelihood and sanity checks in place.
 
 ## Phase 1 — Scalar hidden opinions vs. classical models
 
