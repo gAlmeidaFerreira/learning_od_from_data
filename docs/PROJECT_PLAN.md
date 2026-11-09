@@ -48,6 +48,7 @@ $$
 - [ ] Parameter recovery vs. number of steps $T$, number of agents $n$ and noise level: bias, interval coverage, smallest usable $T$
 - [ ] Cost of approximations: discrete observation and plug-in inputs, version (a) vs. (b)
 - [ ] Identifiability: $\sigma_e$ vs. influence parameters; multimodal posteriors under bounded confidence
+- [ ] Robustness to a misspecified network: simulate on the true $W$, fit with a perturbed one (a fraction of edges rewired or missing); measure how the estimates of $\lambda$, $\sigma_p$ and $\sigma_e$ degrade as the perturbation grows
 
 ### 1.4 Realism extensions
 
@@ -113,6 +114,7 @@ Decisions are logged newest first; add a row whenever the plan changes.
 
 | Date | Decision |
 | --- | --- |
+| 2026-11-09 | Added robustness experiment: fit with a perturbed network to measure sensitivity to network measurement error |
 | 2026-11-08 | No clipping of opinions or observations: it breaks the Kalman reference and biases a Gaussian likelihood; the ordinal observation handles bounds |
 | 2026-11-08 | Baseline noise lowered to $\sigma_e = 0.05$, $\sigma_m = 0.1$ (was 0.1, 0.2, where a single observation was ~85% noise); noise level becomes an experimental axis |
 | 2026-11-08 | Simulator: Gaussian initial opinions, separate RNG streams for network and data, missing posts as `NaN`, datasets saved with their config |
