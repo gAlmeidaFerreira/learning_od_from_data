@@ -65,10 +65,9 @@ def kalman_loglik(
     filtered_means = np.empty((n_steps, state_size))
     filtered_covs = np.empty((n_steps, state_size, state_size))
 
+    mean, cov = m0.copy(), P0.copy()
     for t in range(n_steps):
-        if t == 0:
-            mean, cov = m0.copy(), P0.copy()
-        else:
+        if t > 0:                      # predict; at t = 0 the prior is already the prediction
             mean = F @ mean
             cov = F @ cov @ F.T + Q
 
@@ -130,5 +129,7 @@ def brute_force_loglik(
     stacked_y = y.reshape(-1)
     observed = ~np.isnan(stacked_y)
     return float(multivariate_normal.logpdf(
-        stacked_y[observed], mean=stacked_mean[observed], cov=stacked_cov[np.ix_(observed, observed)]
+        stacked_y[observed],
+        mean=stacked_mean[observed],
+        cov=stacked_cov[np.ix_(observed, observed)],  # type: ignore[arg-type]  # SciPy stub says int
     ))
