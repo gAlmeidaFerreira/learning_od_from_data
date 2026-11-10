@@ -104,3 +104,108 @@ def joint_pf_loglik(
             "filtered_mean": filtered_mean, "ess": ess_history, "n_resamples": n_resamples,
         }
     return float(total_loglik)
+
+
+# Per-agent filter (plan 1.2, version a): agent i's filter tracks only x_i and replaces the
+# neighbours' hidden expressions s_{j,t-1} by their observed posts Y_{j,t-1} (plug-in inputs).
+# All n filters run at once in arrays of shape (N, n); column i is agent i's filter and
+# columns never interact. Fast, but the plug-in inputs carry measurement noise (bias).
+
+
+def _per_agent_obs_loglik(y_t: np.ndarray, x: np.ndarray, model_params: ModelParams) -> np.ndarray:
+    """Elementwise log N(y_t[i]; x[:, i], σ_e² + σ_m²), shape (N, n) — not summed over agents."""
+    if model_params.observation == "ordinal":
+        raise NotImplementedError("Ordinal observation is not implemented yet")
+    if model_params.observation != "continuous":
+        raise ValueError(f"Unsupported observation: {model_params.observation!r}")
+    total_var = model_params.expression_noise_sd**2 + model_params.measurement_noise_sd**2
+    return -0.5 * ((y_t - x) ** 2 / total_var + np.log(2 * np.pi * total_var))
+
+
+@overload
+def per_agent_pf_loglik(
+    y: np.ndarray,
+    W: np.ndarray,
+    model_params: ModelParams,
+    sim_params: SimulationConfig,
+    n_particles: int,
+    rng: np.random.Generator,
+    ess_threshold: float = 0.5,
+    return_filtered: Literal[False] = False,
+) -> float: ...
+
+
+@overload
+def per_agent_pf_loglik(
+    y: np.ndarray,
+    W: np.ndarray,
+    model_params: ModelParams,
+    sim_params: SimulationConfig,
+    n_particles: int,
+    rng: np.random.Generator,
+    ess_threshold: float = 0.5,
+    *,
+    return_filtered: Literal[True],
+) -> tuple[float, dict]: ...
+
+
+def per_agent_pf_loglik(
+    y: np.ndarray,
+    W: np.ndarray,
+    model_params: ModelParams,
+    sim_params: SimulationConfig,
+    n_particles: int,
+    rng: np.random.Generator,
+    ess_threshold: float = 0.5,
+    return_filtered: bool = False,
+) -> float | tuple[float, dict]:
+    """Per-agent bootstrap PF with plug-in neighbour inputs; returns the summed log-likelihood.
+
+    y is (T, n) with no missing posts. Each agent's column is weighted by its own post and
+    resampled on its own when its ESS < ess_threshold * n_particles.
+    If return_filtered, also returns {"per_agent_loglik": (n,), "filtered_mean": (T, n),
+    "ess": (T, n), "n_resamples": (n,)}; filtered_mean is taken before resampling.
+    """
+    if np.isnan(y).any():
+        raise NotImplementedError("missing posts are not supported by the per-agent filter yet")
+
+    n_steps, n_agents = y.shape
+    uniform_log_weight = -np.log(n_particles)
+    log_weights = np.full((n_particles, n_agents), uniform_log_weight)
+    per_agent_loglik = np.zeros(n_agents)
+    filtered_mean = np.empty((n_steps, n_agents))
+    ess_history = np.empty((n_steps, n_agents))
+    n_resamples = np.zeros(n_agents, dtype=int)
+
+    opinions = rng.normal(sim_params.x0_mean, sim_params.x0_sd, size=(n_particles, n_agents))
+    for t in range(n_steps):
+        if t > 0:
+            # Plug-in: y[t-1] (shape (n,)) stands in for every particle's neighbour expressions.
+            # Inside step, y[t-1] @ W.T = (W y_{t-1}) has shape (n,) and broadcasts over the
+            # particle rows, so column i receives the input (W y_{t-1})_i.
+            opinions = model.step(opinions, y[t - 1], W, model_params, rng)
+
+        unnormalised = log_weights + _per_agent_obs_loglik(y[t], opinions, model_params)
+        # SciPy's stubs allow a tuple (only with return_sign=True, unused here).
+        step_loglik = cast(np.ndarray, logsumexp(unnormalised, axis=0))
+        per_agent_loglik += step_loglik
+        log_weights = unnormalised - step_loglik
+
+        weights = np.exp(log_weights)
+        ess = 1.0 / np.sum(weights**2, axis=0)
+        ess_history[t] = ess
+        filtered_mean[t] = np.sum(weights * opinions, axis=0)
+
+        for agent in np.flatnonzero(ess < ess_threshold * n_particles):
+            indices = systematic_resample(weights[:, agent], rng)
+            opinions[:, agent] = opinions[indices, agent]
+            log_weights[:, agent] = uniform_log_weight
+            n_resamples[agent] += 1
+
+    total_loglik = float(per_agent_loglik.sum())
+    if return_filtered:
+        return total_loglik, {
+            "per_agent_loglik": per_agent_loglik, "filtered_mean": filtered_mean,
+            "ess": ess_history, "n_resamples": n_resamples,
+        }
+    return total_loglik

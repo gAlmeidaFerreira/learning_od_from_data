@@ -1,6 +1,6 @@
-# Compares the particle-filter likelihood with the exact Kalman likelihood (linear-Gaussian DeGroot).
+# Joint particle filter vs. the exact joint Kalman likelihood (linear-Gaussian DeGroot).
 #
-# Run from the repository root:  python -m checks.check_kalman
+# Run from the repository root:  python -m checks.check_joint_filter
 
 from dataclasses import replace
 from pathlib import Path
@@ -16,7 +16,7 @@ from src.config import Config, load_config, save_config
 from src.particle_filter import joint_pf_loglik
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-OUTPUT_DIR = REPO_ROOT / "results" / "checks"
+OUTPUT_DIR = REPO_ROOT / "results" / "checks" / "joint_filter"
 
 PARTICLE_COUNTS = [100, 1000, 10000]
 N_REPLICATES = 100
@@ -126,7 +126,7 @@ def check_profile(config: Config, dataset: dict) -> Path:
     ax.legend(frameon=False)
     ax.grid(alpha=0.25)
     fig.tight_layout()
-    figure_path = OUTPUT_DIR / "pf_vs_kalman_profile.png"
+    figure_path = OUTPUT_DIR / "lambda_profile.png"
     fig.savefig(figure_path, dpi=150)
     plt.close(fig)
     return figure_path
@@ -166,7 +166,7 @@ def check_dimension_effect(base_config: Config) -> tuple[dict, Path]:
     ax.set_title(rf"Joint PF spread vs. network size ($N = {N_PARTICLES_DIMENSION}$, $T = 50$)")
     ax.grid(alpha=0.25, which="both")
     fig.tight_layout()
-    figure_path = OUTPUT_DIR / "pf_dimension_effect.png"
+    figure_path = OUTPUT_DIR / "dimension_effect.png"
     fig.savefig(figure_path, dpi=150)
     plt.close(fig)
     return dimension_results, figure_path
@@ -176,7 +176,7 @@ def main() -> None:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     base_config = load_config(REPO_ROOT / "configs" / "degroot_base.yaml")
     config = small_network_config(base_config, n_agents=5)
-    save_config(config, OUTPUT_DIR / "check_kalman_config.yaml")
+    save_config(config, OUTPUT_DIR / "config.yaml")
 
     dataset = simulate.simulate(config)
     kalman_value = kalman.kalman_loglik(dataset["y"], dataset["W"], config.model, config.simulation)

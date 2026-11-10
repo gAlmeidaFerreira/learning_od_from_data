@@ -155,3 +155,82 @@ def brute_force_loglik(
         mean=stacked_mean[observed],
         cov=stacked_cov[np.ix_(observed, observed)],  # type: ignore[arg-type]  # SciPy stub says int
     ))
+
+
+# Per-agent Kalman filter: exact likelihood of the plug-in model used by the per-agent particle
+# filter, x_{i,t} = λ x_{i,t-1} + (1-λ) (W Y_{t-1})_i + ε_{i,t},  Y_{i,t} = x_{i,t} + (ξ + e)_{i,t}.
+# The n scalar filters are independent and run vectorised over agents.
+
+
+@overload
+def per_agent_kalman_loglik(
+    y: np.ndarray,
+    W: np.ndarray,
+    model_params: ModelParams,
+    sim_params: SimulationConfig,
+    return_filtered: Literal[False] = False,
+) -> float: ...
+
+
+@overload
+def per_agent_kalman_loglik(
+    y: np.ndarray,
+    W: np.ndarray,
+    model_params: ModelParams,
+    sim_params: SimulationConfig,
+    return_filtered: Literal[True],
+) -> tuple[float, dict]: ...
+
+
+def per_agent_kalman_loglik(
+    y: np.ndarray,
+    W: np.ndarray,
+    model_params: ModelParams,
+    sim_params: SimulationConfig,
+    return_filtered: bool = False,
+) -> float | tuple[float, dict]:
+    """Exact log-likelihood of the per-agent plug-in model (sum over agents); y is (T, n), no NaN.
+
+    If return_filtered, also returns {"per_agent_loglik": (n,), "filtered_mean": (T, n),
+    "filtered_var": (T, n)}.
+    """
+    if model_params.dynamics != "degroot":
+        raise ValueError(f"Kalman filter needs dynamics 'degroot', got {model_params.dynamics!r}")
+    if model_params.observation != "continuous":
+        raise ValueError(f"Kalman filter needs continuous observation, got {model_params.observation!r}")
+    if np.isnan(y).any():
+        raise NotImplementedError("missing posts are not supported by the per-agent filter yet")
+
+    n_steps, n_agents = y.shape
+    self_weight = model_params.self_weight
+    process_var = model_params.process_noise_sd**2
+    observation_var = model_params.expression_noise_sd**2 + model_params.measurement_noise_sd**2
+
+    mean = np.full(n_agents, sim_params.x0_mean)
+    var = np.full(n_agents, sim_params.x0_sd**2)
+    per_agent_loglik = np.zeros(n_agents)
+    filtered_mean = np.empty((n_steps, n_agents))
+    filtered_var = np.empty((n_steps, n_agents))
+
+    for t in range(n_steps):
+        if t > 0:
+            neighbour_input = W @ y[t - 1]                 # plug-in: observed posts replace s_{t-1}
+            mean = self_weight * mean + (1 - self_weight) * neighbour_input
+            var = self_weight**2 * var + process_var
+
+        innovation_var = var + observation_var
+        gain = var / innovation_var
+        innovation = y[t] - mean
+        per_agent_loglik += -0.5 * (np.log(2 * np.pi) + np.log(innovation_var) + innovation**2 / innovation_var)
+        mean = mean + gain * innovation
+        var = (1 - gain) * var
+
+        filtered_mean[t] = mean
+        filtered_var[t] = var
+
+    total_loglik = float(per_agent_loglik.sum())
+    if return_filtered:
+        return total_loglik, {
+            "per_agent_loglik": per_agent_loglik, "filtered_mean": filtered_mean, "filtered_var": filtered_var,
+        }
+    return total_loglik

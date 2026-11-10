@@ -7,7 +7,7 @@ Nov 8, 2026 · @Guilherme
 The project builds a hidden-state algorithm that learns opinion dynamics from limited, noisy data: latent opinions evolve on a network, people only see each other's expressions, and researchers only see noisy labels of those expressions. Parameters are inferred with a particle-filter likelihood, with the hidden trajectories integrated out.
 
 - **Current phase:** Phase 1, scalar hidden opinions on simulated data.
-- **Next action:** implement the particle filter (joint version first, on a small network) and compare its log-likelihood with the Kalman reference in `checks/check_kalman.py`.
+- **Next action:** implement the particle filter (joint version first, on a small network) and compare its log-likelihood with the Kalman reference in `checks/check_joint_filter.py`.
 - **Repository:** config loader, DeGroot model, simulator, exact Kalman likelihood and sanity checks in place.
 
 ## Phase 1 — Scalar hidden opinions vs. classical models
@@ -93,9 +93,11 @@ The repository starts small and grows one verified step at a time.
 | `src/config.py` | Loads YAML into strict dataclasses | Implemented |
 | `src/model.py` | Network, dynamics, expression and observation layers | DeGroot implemented (continuous observation) |
 | `src/simulate.py` | Ground truth $x$, $s$, $Y$ and posting mask $P$ | Implemented (Gaussian x0, save/load) |
-| `src/kalman.py` | Exact Kalman log-likelihood (linear-Gaussian reference) | Implemented, brute-force check passing |
-| `src/particle_filter.py` | Log-likelihood estimator | Joint filter implemented (continuous observation) |
-| `checks/check_kalman.py` | Particle filter vs. joint Kalman filter | PF vs Kalman comparison |
+| `src/kalman.py` | Exact Kalman log-likelihood (linear-Gaussian reference) | Joint and per-agent Kalman log-likelihood |
+| `src/particle_filter.py` | Log-likelihood estimator | Joint and per-agent filters (continuous observation) |
+| `checks/check_joint_filter.py` | Joint particle filter vs. joint Kalman filter | PF vs Kalman comparison |
+| `checks/check_per_agent_filter.py` | Per-agent particle filter vs. per-agent Kalman filter | Implemented |
+| `checks/check_plugin_bias.py` | Plug-in bias: per-agent vs. joint Kalman estimates of $\lambda$ | Implemented |
 | `notebooks/01_sanity_checks.ipynb` | Sanity checks of the model layer (classical limit, noise, reproducibility) | DeGroot, simulator and Kalman checks passing |
 | `notebooks/02_simulate_and_filter.ipynb` | Simulation and filtering exploration and plots | Empty |
 
@@ -106,6 +108,7 @@ The repository starts small and grows one verified step at a time.
 - Performance: keep the code vectorized NumPy; vectorize hot loops (e.g. per-agent resampling) first, then parallelize independent runs across CPU cores (`joblib`/`multiprocessing`); consider JAX on GPU only if a measured run is still too slow (most likely with real data in Phase 3).
 - Dynamics chosen by a dispatch dictionary; unsupported models raise an error.
 - One config file per experiment; save the config next to every result.
+- One check script per question in `checks/`; each writes its figures and config to `results/checks/<name>/`.
 - Split `model.py` into dynamics, observation and network files when FJ arrives.
 - Every new dynamics model gets its own section in `notebooks/01_sanity_checks.ipynb` (classical limit, noise behaviour, reproducibility) before it is used anywhere else.
 - Config still to add: `thresholds`.
