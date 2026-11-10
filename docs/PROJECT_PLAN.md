@@ -7,8 +7,8 @@ Nov 8, 2026 · @Guilherme
 The project builds a hidden-state algorithm that learns opinion dynamics from limited, noisy data: latent opinions evolve on a network, people only see each other's expressions, and researchers only see noisy labels of those expressions. Parameters are inferred with a particle-filter likelihood, with the hidden trajectories integrated out.
 
 - **Current phase:** Phase 1, scalar hidden opinions on simulated data.
-- **Next action:** implement the particle filter (joint version first, on a small network) and compare its log-likelihood with the Kalman reference in `checks/check_joint_filter.py`.
-- **Repository:** config loader, DeGroot model, simulator, exact Kalman likelihood and sanity checks in place.
+- **Next action:** add corrected neighbour inputs to the per-agent filter (replace raw labels $Y_j$ by filtered or smoothed estimates of neighbours' expressions, iterated until $\hat\lambda$ stabilises) and measure the remaining bias with `checks/check_plugin_bias.py`.
+- **Repository:** config loader, DeGroot model, simulator, joint and per-agent Kalman and particle filters, and check scripts in place.
 
 ## Phase 1 — Scalar hidden opinions vs. classical models
 
@@ -40,13 +40,15 @@ $$
 - Parameters: grid or optimizer first, then IF2, then PMMH.
 - In an agent's own emission, expression and measurement noise integrate out in closed form, with total variance $\sigma_e^2 + \sigma_m^2$.
 - Neighbours' expressions are hidden inputs: (a) per-agent filter with plug-in inputs from $Y$, fast but biased; (b) joint filter over all agents on a small network, exact reference.
+- Finding (2026-11-10): with raw $Y$ as inputs, the per-agent filter overestimates $\lambda$ through attenuation, and grows more confident as it gets more wrong. Mean $\hat\lambda$ over 20 datasets (true $0.3$): $0.32, 0.40, 0.57, 0.76$ for $\sigma_m = 0.02, 0.05, 0.1, 0.2$, while the joint Kalman estimate stays near $0.3$. At the baseline $\sigma_m = 0.1$ the plug-in profile puts the truth more than 60 log-likelihood units below its peak.
+- Fixes, in order of preference: (1) corrected inputs, i.e. iterated filtered or smoothed estimates of $s_j$ in place of $Y_j$; (2) neighbourhood (block) filters that also track neighbours' states; (3) simulation-based bias correction.
 - Steps without a post: propagate particles, skip weighting and resampling.
 
 ### 1.3 Evaluation
 
 - [ ] Correctness: particle-filter log-likelihood matches the joint Kalman filter (linear model, continuous $Y$)
 - [ ] Parameter recovery vs. number of steps $T$, number of agents $n$ and noise level: bias, interval coverage, smallest usable $T$
-- [ ] Cost of approximations: discrete observation and plug-in inputs, version (a) vs. (b)
+- [ ] Cost of approximations: discrete observation and plug-in inputs, version (a) vs. (b). Raw plug-in inputs measured (see Finding in 1.2); corrected inputs still to measure
 - [ ] Identifiability: $\sigma_e$ vs. influence parameters; multimodal posteriors under bounded confidence
 - [ ] Robustness to a misspecified network: simulate on the true $W$, fit with a perturbed one (a fraction of edges rewired or missing); measure how the estimates of $\lambda$, $\sigma_p$ and $\sigma_e$ degrade as the perturbation grows
 
@@ -119,6 +121,7 @@ Decisions are logged newest first; add a row whenever the plan changes.
 
 | Date | Decision |
 | --- | --- |
+| 2026-11-10 | Raw plug-in inputs make the per-agent filter unusable for $\lambda$ at realistic noise ($\hat\lambda \approx 0.57$ vs. true $0.3$ at $\sigma_m = 0.1$, with overconfident profiles); next step is corrected neighbour inputs, benchmarked with `check_plugin_bias.py` |
 | 2026-11-09 | No GPU for now: a per-agent likelihood evaluation takes ~0.2 s on CPU ($n=50$, $T=100$, $N=500$); parallelize across runs before considering JAX/GPU |
 | 2026-11-09 | Added robustness experiment: fit with a perturbed network to measure sensitivity to network measurement error |
 | 2026-11-08 | No clipping of opinions or observations: it breaks the Kalman reference and biases a Gaussian likelihood; the ordinal observation handles bounds |
@@ -134,7 +137,7 @@ Decisions are logged newest first; add a row whenever the plan changes.
 
 Open questions:
 
-- [ ] Plug-in vs. corrected neighbour inputs: how large is the attenuation bias?
+- [ ] Do corrected neighbour inputs remove the attenuation bias in $\lambda$, and does the per-agent likelihood stay overconfident?
 - [ ] Can $\sigma_e$ and $\sigma_m$ be recovered jointly, or must $\sigma_m$ stay fixed?
 - [ ] Time step size for real data
 - [ ] Real dataset for Phase 3
