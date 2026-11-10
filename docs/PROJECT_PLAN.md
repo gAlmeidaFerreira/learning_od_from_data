@@ -7,7 +7,7 @@ Nov 8, 2026 · @Guilherme
 The project builds a hidden-state algorithm that learns opinion dynamics from limited, noisy data: latent opinions evolve on a network, people only see each other's expressions, and researchers only see noisy labels of those expressions. Parameters are inferred with a particle-filter likelihood, with the hidden trajectories integrated out.
 
 - **Current phase:** Phase 1, scalar hidden opinions on simulated data.
-- **Next action:** add corrected neighbour inputs to the per-agent filter (replace raw labels $Y_j$ by filtered or smoothed estimates of neighbours' expressions, iterated until $\hat\lambda$ stabilises) and measure the remaining bias with `checks/check_plugin_bias.py`.
+- **Next action:** add corrected neighbour inputs to the per-agent filter: replace raw labels $Y_{j,t-1}$ by the filtered estimate $\hat s_{j,t-1} = \mathbb E[s_{j,t-1} \mid Y_{0:t-1}]$ computed by the neighbours' own filters in the same pass, optionally adding the input uncertainty to the process noise; measure the remaining bias with `checks/check_plugin_bias.py`.
 - **Repository:** config loader, DeGroot model, simulator, joint and per-agent Kalman and particle filters, and check scripts in place.
 
 ## Phase 1 — Scalar hidden opinions vs. classical models
@@ -43,7 +43,7 @@ $$
 - In an agent's own emission, expression and measurement noise integrate out in closed form, with total variance $\sigma_e^2 + \sigma_m^2$.
 - Neighbours' expressions are hidden inputs: (a) per-agent filter with plug-in inputs from $Y$, fast but biased; (b) joint filter over all agents on a small network, exact reference.
 - Finding (2026-11-10): with raw $Y$ as inputs, the per-agent filter overestimates $\lambda$ through attenuation, and grows more confident as it gets more wrong. Mean $\hat\lambda$ over 20 datasets (true $0.3$): $0.32, 0.40, 0.57, 0.76$ for $\sigma_m = 0.02, 0.05, 0.1, 0.2$, while the joint Kalman estimate stays near $0.3$. At the baseline $\sigma_m = 0.1$ the plug-in profile puts the truth more than 60 log-likelihood units below its peak.
-- Fixes, in order of preference: (1) corrected inputs, i.e. iterated filtered or smoothed estimates of $s_j$ in place of $Y_j$; (2) neighbourhood (block) filters that also track neighbours' states; (3) simulation-based bias correction.
+- Fixes, in order of preference: (1) corrected inputs, i.e. filtered estimates of $s_j$ in place of $Y_j$, computed causally in the same pass (filtered, not smoothed, so an agent's own later posts never leak into its inputs), with the input variance optionally added to the process noise; (2) neighbourhood (block) filters that also track neighbours' states; (3) simulation-based bias correction.
 - Steps without a post: propagate particles, skip weighting and resampling.
 
 ### 1.3 Evaluation
