@@ -133,11 +133,14 @@ The repository starts small and grows one verified step at a time.
 | --- | --- | --- |
 | `configs/degroot_base.yaml` | Parameter values for one run | Filled |
 | `src/config.py` | Loads YAML into strict dataclasses | Implemented |
-| `src/model.py` | Network, dynamics, expression and observation layers | DeGroot implemented (continuous observation) |
+| `src/model.py` | Network, dynamics and expression layers | DeGroot implemented |
+| `src/observation.py` | Observation layer: simulation of $Y$, its likelihood, and expression estimates from $(x, Y)$ shared by the filters | Continuous observation implemented |
+| `src/neighbour_inputs.py` | Neighbour-input modes of the per-agent filters (`observed`, `filtered`, `filtered_var`) | Implemented |
 | `src/simulate.py` | Ground truth $x$, $s$, $Y$ and posting mask $P$ | Implemented (Gaussian x0, save/load) |
-| `src/kalman.py` | Exact Kalman log-likelihood (linear-Gaussian reference) | Joint and per-agent Kalman log-likelihood |
-| `src/particle_filter.py` | Log-likelihood estimator | Joint and per-agent filters (continuous observation) |
+| `src/kalman.py` | Exact Kalman log-likelihood (linear-Gaussian reference) | Joint and per-agent Kalman log-likelihood; per-agent with observed / filtered / filtered_var neighbour inputs |
+| `src/particle_filter.py` | Log-likelihood estimator | Joint and per-agent filters (continuous observation); per-agent with observed / filtered / filtered_var neighbour inputs |
 | `checks/check_joint_filter.py` | Joint particle filter vs. joint Kalman filter | PF vs Kalman comparison |
+| `checks/common.py` | Shared helpers for the check scripts (paths, base config, $\lambda$ profiles, profile width) | Implemented |
 | `checks/check_per_agent_filter.py` | Per-agent particle filter vs. per-agent Kalman filter | Implemented |
 | `checks/check_plugin_bias.py` | Plug-in bias: per-agent vs. joint Kalman estimates of $\lambda$ | Implemented |
 | `notebooks/01_sanity_checks.ipynb` | Sanity checks of the model layer (classical limit, noise, reproducibility) | DeGroot, simulator and Kalman checks passing |
@@ -151,7 +154,7 @@ The repository starts small and grows one verified step at a time.
 - Dynamics chosen by a dispatch dictionary; unsupported models raise an error.
 - One config file per experiment; save the config next to every result.
 - One check script per question in `checks/`; each writes its figures and config to `results/checks/<name>/`.
-- Split `model.py` into dynamics, observation and network files when FJ arrives.
+- Split `model.py` into dynamics and network files when FJ arrives (the observation layer is already in `observation.py`).
 - Every new dynamics model gets its own section in `notebooks/01_sanity_checks.ipynb` (classical limit, noise behaviour, reproducibility) before it is used anywhere else.
 - Config still to add: `thresholds`.
 
@@ -161,6 +164,7 @@ Decisions are logged newest first; add a row whenever the plan changes.
 
 | Date | Decision |
 | --- | --- |
+| 2026-11-10 | Shared code gets one home: observation formulas in `src/observation.py` (split from `model.py`), input modes in `src/neighbour_inputs.py`, check helpers in `checks/common.py` |
 | 2026-11-10 | Added Phase 1.5, heterogeneous agents (per-agent $\lambda_i$, FJ zealots, per-agent $\epsilon_i$), after corrected inputs and PMMH and before Phase 2; PMMH validated against Kalman-likelihood MCMC |
 | 2026-11-10 | Raw plug-in inputs make the per-agent filter unusable for $\lambda$ at realistic noise ($\hat\lambda \approx 0.57$ vs. true $0.3$ at $\sigma_m = 0.1$, with overconfident profiles); next step is corrected neighbour inputs, benchmarked with `check_plugin_bias.py` |
 | 2026-11-09 | No GPU for now: a per-agent likelihood evaluation takes ~0.2 s on CPU ($n=50$, $T=100$, $N=500$); parallelize across runs before considering JAX/GPU |

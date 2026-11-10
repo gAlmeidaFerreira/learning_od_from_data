@@ -7,6 +7,16 @@ from scipy.linalg import cho_factor, cho_solve
 from scipy.stats import multivariate_normal
 
 from src.config import ModelParams, SimulationConfig
+from src.neighbour_inputs import InputMode, validate_per_agent_inputs
+from src.observation import expression_estimate, observation_variance
+
+
+def _require_linear_gaussian(model_params: ModelParams) -> None:
+    """Raise unless the model is linear-Gaussian (DeGroot dynamics, continuous observation)."""
+    if model_params.dynamics != "degroot":
+        raise ValueError(f"Kalman filter needs dynamics 'degroot', got {model_params.dynamics!r}")
+    if model_params.observation != "continuous":
+        raise ValueError(f"Kalman filter needs continuous observation, got {model_params.observation!r}")
 
 
 def state_space(
@@ -17,10 +27,7 @@ def state_space(
     Augmented state z_t = [x_t; s_t] of size 2n:
       z_t = F z_{t-1} + w_t, w_t ~ N(0, Q);   Y_t = H z_t + e_t, e_t ~ N(0, R);   z_0 ~ N(m0, P0).
     """
-    if model_params.dynamics != "degroot":
-        raise ValueError(f"Kalman filter needs dynamics 'degroot', got {model_params.dynamics!r}")
-    if model_params.observation != "continuous":
-        raise ValueError(f"Kalman filter needs continuous observation, got {model_params.observation!r}")
+    _require_linear_gaussian(model_params)
 
     n_agents = W.shape[0]
     identity = np.eye(n_agents)
@@ -157,9 +164,13 @@ def brute_force_loglik(
     ))
 
 
-# Per-agent Kalman filter: exact likelihood of the plug-in model used by the per-agent particle
-# filter, x_{i,t} = λ x_{i,t-1} + (1-λ) (W Y_{t-1})_i + ε_{i,t},  Y_{i,t} = x_{i,t} + (ξ + e)_{i,t}.
-# The n scalar filters are independent and run vectorised over agents.
+# Per-agent Kalman filter: n independent scalar filters, vectorised over agents,
+#   x_{i,t} = λ x_{i,t-1} + (1-λ) u_{i,t-1} + ε_{i,t},   Y_{i,t} = x_{i,t} + (ξ + e)_{i,t},
+# where the neighbour input u_{t-1} = W (neighbours' expressions) depends on input_mode
+# (see src/neighbour_inputs.py):
+#   "observed":     u = W Y_{t-1}
+#   "filtered":     u = W ŝ_{t-1}
+#   "filtered_var": u = W ŝ_{t-1}, plus the input variance (1-λ)² (W∘W) v_{t-1} added to the prediction
 
 
 @overload
@@ -169,6 +180,8 @@ def per_agent_kalman_loglik(
     model_params: ModelParams,
     sim_params: SimulationConfig,
     return_filtered: Literal[False] = False,
+    *,
+    input_mode: InputMode = "observed",
 ) -> float: ...
 
 
@@ -179,6 +192,8 @@ def per_agent_kalman_loglik(
     model_params: ModelParams,
     sim_params: SimulationConfig,
     return_filtered: Literal[True],
+    *,
+    input_mode: InputMode = "observed",
 ) -> tuple[float, dict]: ...
 
 
@@ -188,35 +203,38 @@ def per_agent_kalman_loglik(
     model_params: ModelParams,
     sim_params: SimulationConfig,
     return_filtered: bool = False,
+    *,
+    input_mode: InputMode = "observed",
 ) -> float | tuple[float, dict]:
-    """Exact log-likelihood of the per-agent plug-in model (sum over agents); y is (T, n), no NaN.
+    """Exact log-likelihood of the per-agent model (sum over agents); y is (T, n), no NaN.
 
-    If return_filtered, also returns {"per_agent_loglik": (n,), "filtered_mean": (T, n),
-    "filtered_var": (T, n)}.
+    input_mode chooses the neighbour input (see src/neighbour_inputs.py). If return_filtered, also
+    returns {"per_agent_loglik": (n,), "filtered_mean": (T, n), "filtered_var": (T, n)}.
     """
-    if model_params.dynamics != "degroot":
-        raise ValueError(f"Kalman filter needs dynamics 'degroot', got {model_params.dynamics!r}")
-    if model_params.observation != "continuous":
-        raise ValueError(f"Kalman filter needs continuous observation, got {model_params.observation!r}")
-    if np.isnan(y).any():
-        raise NotImplementedError("missing posts are not supported by the per-agent filter yet")
+    _require_linear_gaussian(model_params)
+    validate_per_agent_inputs(y, input_mode)
 
     n_steps, n_agents = y.shape
     self_weight = model_params.self_weight
     process_var = model_params.process_noise_sd**2
-    observation_var = model_params.expression_noise_sd**2 + model_params.measurement_noise_sd**2
+    observation_var = observation_variance(model_params)
+    squared_weights = W**2
 
     mean = np.full(n_agents, sim_params.x0_mean)
     var = np.full(n_agents, sim_params.x0_sd**2)
     per_agent_loglik = np.zeros(n_agents)
     filtered_mean = np.empty((n_steps, n_agents))
     filtered_var = np.empty((n_steps, n_agents))
+    # Neighbours' expressions and their variance, set at the end of every step; first used at t = 1.
+    neighbour_expressions = np.zeros(n_agents)
+    neighbour_expression_var = np.zeros(n_agents)
 
     for t in range(n_steps):
         if t > 0:
-            neighbour_input = W @ y[t - 1]                 # plug-in: observed posts replace s_{t-1}
-            mean = self_weight * mean + (1 - self_weight) * neighbour_input
+            mean = self_weight * mean + (1 - self_weight) * (W @ neighbour_expressions)
             var = self_weight**2 * var + process_var
+            if input_mode == "filtered_var":
+                var = var + (1 - self_weight) ** 2 * (squared_weights @ neighbour_expression_var)
 
         innovation_var = var + observation_var
         gain = var / innovation_var
@@ -227,6 +245,11 @@ def per_agent_kalman_loglik(
 
         filtered_mean[t] = mean
         filtered_var[t] = var
+
+        if input_mode == "observed":
+            neighbour_expressions = y[t]
+        else:
+            neighbour_expressions, neighbour_expression_var = expression_estimate(mean, var, y[t], model_params)
 
     total_loglik = float(per_agent_loglik.sum())
     if return_filtered:

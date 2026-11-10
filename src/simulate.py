@@ -5,7 +5,7 @@ from pathlib import Path
 import networkx as nx
 import numpy as np
 
-from src import model
+from src import model, observation
 from src.config import Config, load_config, save_config
 
 
@@ -42,11 +42,11 @@ def simulate(
 
     x[0] = rng.normal(config.simulation.x0_mean, config.simulation.x0_sd, size=n)
     s[0] = model.express(x[0], params, rng)
-    y[0] = model.observe(s[0], params, rng)
+    y[0] = observation.observe(s[0], params, rng)
     for t in range(1, T):
         x[t] = model.step(x[t - 1], s[t - 1], W, params, rng)
         s[t] = model.express(x[t], params, rng)
-        y[t] = model.observe(s[t], params, rng)
+        y[t] = observation.observe(s[t], params, rng)
 
     P = np.ones((T, n), dtype=bool)
     y[~P] = np.nan

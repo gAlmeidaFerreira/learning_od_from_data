@@ -5,8 +5,10 @@ from typing import Literal, cast, overload
 import numpy as np
 from scipy.special import logsumexp
 
-from src import model
+from src import model, observation
 from src.config import ModelParams, SimulationConfig
+from src.neighbour_inputs import InputMode, validate_per_agent_inputs
+from src.observation import expression_estimate, gaussian_obs_loglik
 
 
 def systematic_resample(weights: np.ndarray, rng: np.random.Generator) -> np.ndarray:
@@ -19,8 +21,7 @@ def systematic_resample(weights: np.ndarray, rng: np.random.Generator) -> np.nda
 
 
 # Joint filter: each particle carries every agent's x and s, so neighbours' expressions are
-# tracked exactly. A per-agent filter with plug-in neighbour inputs (plan 1.2, version a) will
-# sit next to it as a separate function with the same signature.
+# tracked exactly (plan 1.2, version b).
 
 
 @overload
@@ -77,13 +78,13 @@ def joint_pf_loglik(
     opinions = rng.normal(sim_params.x0_mean, sim_params.x0_sd, size=(n_particles, n_agents))
     for t in range(n_steps):
         if not np.isnan(y[t]).all():
-            log_incremental_weights = model.obs_loglik_given_opinion(y[t], opinions, model_params)
+            log_incremental_weights = observation.obs_loglik_given_opinion(y[t], opinions, model_params)
             unnormalised = log_weights + log_incremental_weights
             step_loglik = cast(float, logsumexp(unnormalised))
             total_loglik += step_loglik
             log_weights = unnormalised - step_loglik
 
-        expressions = model.sample_expression_given_obs(opinions, y[t], model_params, rng)
+        expressions = observation.sample_expression_given_obs(opinions, y[t], model_params, rng)
 
         weights = np.exp(log_weights)
         ess = 1.0 / np.sum(weights**2)
@@ -107,19 +108,10 @@ def joint_pf_loglik(
 
 
 # Per-agent filter (plan 1.2, version a): agent i's filter tracks only x_i and replaces the
-# neighbours' hidden expressions s_{j,t-1} by their observed posts Y_{j,t-1} (plug-in inputs).
-# All n filters run at once in arrays of shape (N, n); column i is agent i's filter and
-# columns never interact. Fast, but the plug-in inputs carry measurement noise (bias).
-
-
-def _per_agent_obs_loglik(y_t: np.ndarray, x: np.ndarray, model_params: ModelParams) -> np.ndarray:
-    """Elementwise log N(y_t[i]; x[:, i], σ_e² + σ_m²), shape (N, n) — not summed over agents."""
-    if model_params.observation == "ordinal":
-        raise NotImplementedError("Ordinal observation is not implemented yet")
-    if model_params.observation != "continuous":
-        raise ValueError(f"Unsupported observation: {model_params.observation!r}")
-    total_var = model_params.expression_noise_sd**2 + model_params.measurement_noise_sd**2
-    return -0.5 * ((y_t - x) ** 2 / total_var + np.log(2 * np.pi * total_var))
+# neighbours' hidden expressions s_{j,t-1} by an input chosen with input_mode (see
+# src/neighbour_inputs.py). In "filtered_var" each particle draws its own neighbour expressions
+# ŝ + sqrt(v) η, η ~ N(0, I). All n filters run at once in arrays of shape (N, n); column i is
+# agent i's filter and columns never interact.
 
 
 @overload
@@ -132,6 +124,8 @@ def per_agent_pf_loglik(
     rng: np.random.Generator,
     ess_threshold: float = 0.5,
     return_filtered: Literal[False] = False,
+    *,
+    input_mode: InputMode = "observed",
 ) -> float: ...
 
 
@@ -146,6 +140,7 @@ def per_agent_pf_loglik(
     ess_threshold: float = 0.5,
     *,
     return_filtered: Literal[True],
+    input_mode: InputMode = "observed",
 ) -> tuple[float, dict]: ...
 
 
@@ -158,16 +153,18 @@ def per_agent_pf_loglik(
     rng: np.random.Generator,
     ess_threshold: float = 0.5,
     return_filtered: bool = False,
+    *,
+    input_mode: InputMode = "observed",
 ) -> float | tuple[float, dict]:
-    """Per-agent bootstrap PF with plug-in neighbour inputs; returns the summed log-likelihood.
+    """Per-agent bootstrap PF; returns the log-likelihood summed over agents.
 
     y is (T, n) with no missing posts. Each agent's column is weighted by its own post and
-    resampled on its own when its ESS < ess_threshold * n_particles.
+    resampled on its own when its ESS < ess_threshold * n_particles. input_mode chooses the
+    neighbour input (see the comment above).
     If return_filtered, also returns {"per_agent_loglik": (n,), "filtered_mean": (T, n),
     "ess": (T, n), "n_resamples": (n,)}; filtered_mean is taken before resampling.
     """
-    if np.isnan(y).any():
-        raise NotImplementedError("missing posts are not supported by the per-agent filter yet")
+    validate_per_agent_inputs(y, input_mode)
 
     n_steps, n_agents = y.shape
     uniform_log_weight = -np.log(n_particles)
@@ -176,16 +173,26 @@ def per_agent_pf_loglik(
     filtered_mean = np.empty((n_steps, n_agents))
     ess_history = np.empty((n_steps, n_agents))
     n_resamples = np.zeros(n_agents, dtype=int)
+    # Neighbours' expressions and their variance, set at the end of every step; first used at t = 1.
+    neighbour_expressions = np.zeros(n_agents)
+    neighbour_expression_var = np.zeros(n_agents)
 
     opinions = rng.normal(sim_params.x0_mean, sim_params.x0_sd, size=(n_particles, n_agents))
     for t in range(n_steps):
         if t > 0:
-            # Plug-in: y[t-1] (shape (n,)) stands in for every particle's neighbour expressions.
-            # Inside step, y[t-1] @ W.T = (W y_{t-1}) has shape (n,) and broadcasts over the
-            # particle rows, so column i receives the input (W y_{t-1})_i.
-            opinions = model.step(opinions, y[t - 1], W, model_params, rng)
+            if input_mode == "filtered_var":
+                # Each particle row draws its own neighbour expressions. A row mixes particles of
+                # different agents, but columns are independent filters, so sharing a row is fine.
+                expressions_input = neighbour_expressions + np.sqrt(neighbour_expression_var) * rng.normal(
+                    size=(n_particles, n_agents)
+                )
+            else:
+                # Shape (n,): inside step, input @ W.T = W input has shape (n,) and broadcasts over
+                # the particle rows, so column i receives the input (W input)_i.
+                expressions_input = neighbour_expressions
+            opinions = model.step(opinions, expressions_input, W, model_params, rng)
 
-        unnormalised = log_weights + _per_agent_obs_loglik(y[t], opinions, model_params)
+        unnormalised = log_weights + gaussian_obs_loglik(y[t], opinions, model_params)
         # SciPy's stubs allow a tuple (only with return_sign=True, unused here).
         step_loglik = cast(np.ndarray, logsumexp(unnormalised, axis=0))
         per_agent_loglik += step_loglik
@@ -194,7 +201,16 @@ def per_agent_pf_loglik(
         weights = np.exp(log_weights)
         ess = 1.0 / np.sum(weights**2, axis=0)
         ess_history[t] = ess
-        filtered_mean[t] = np.sum(weights * opinions, axis=0)
+        opinion_mean = np.sum(weights * opinions, axis=0)
+        filtered_mean[t] = opinion_mean
+
+        if input_mode == "observed":
+            neighbour_expressions = y[t]
+        else:
+            opinion_var = np.sum(weights * (opinions - opinion_mean) ** 2, axis=0)
+            neighbour_expressions, neighbour_expression_var = expression_estimate(
+                opinion_mean, opinion_var, y[t], model_params
+            )
 
         for agent in np.flatnonzero(ess < ess_threshold * n_particles):
             indices = systematic_resample(weights[:, agent], rng)

@@ -5,18 +5,15 @@
 from dataclasses import replace
 from pathlib import Path
 
-import matplotlib
-
-matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
+from checks.common import CHECK_RESULTS_DIR, REPO_ROOT, load_base_config, self_weight_profile
 from src import kalman, simulate
-from src.config import Config, load_config, save_config
+from src.config import Config, save_config
 from src.particle_filter import joint_pf_loglik
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-OUTPUT_DIR = REPO_ROOT / "results" / "checks" / "joint_filter"
+OUTPUT_DIR = CHECK_RESULTS_DIR / "joint_filter"
 
 PARTICLE_COUNTS = [100, 1000, 10000]
 N_REPLICATES = 100
@@ -99,15 +96,15 @@ def check_filtered_means(config: Config, dataset: dict) -> float:
 def check_profile(config: Config, dataset: dict) -> Path:
     """(c) λ profile: Kalman vs PF with common random numbers."""
     self_weight_grid = np.linspace(0.05, 0.95, 19)
-    kalman_profile, pf_profile = [], []
-    for self_weight in self_weight_grid:
-        params = replace(config.model, self_weight=self_weight)
-        kalman_profile.append(kalman.kalman_loglik(dataset["y"], dataset["W"], params, config.simulation))
-        pf_profile.append(joint_pf_loglik(
-            dataset["y"], dataset["W"], params, config.simulation, N_PARTICLES_PROFILE,
-            np.random.default_rng(PROFILE_SEED),
-        ))
-    kalman_profile, pf_profile = np.array(kalman_profile), np.array(pf_profile)
+    y, W = dataset["y"], dataset["W"]
+    kalman_profile = self_weight_profile(
+        lambda params: kalman.kalman_loglik(y, W, params, config.simulation), config.model, self_weight_grid
+    )
+    pf_profile = self_weight_profile(
+        lambda params: joint_pf_loglik(y, W, params, config.simulation, N_PARTICLES_PROFILE,
+                                       np.random.default_rng(PROFILE_SEED)),
+        config.model, self_weight_grid,
+    )
     print(f"\n(c) λ profile ({self_weight_grid.size} points, PF N = {N_PARTICLES_PROFILE}, seed {PROFILE_SEED} "
           f"at every point): argmax Kalman = {self_weight_grid[kalman_profile.argmax()]:.2f}, "
           f"PF = {self_weight_grid[pf_profile.argmax()]:.2f}; "
@@ -174,7 +171,7 @@ def check_dimension_effect(base_config: Config) -> tuple[dict, Path]:
 
 def main() -> None:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    base_config = load_config(REPO_ROOT / "configs" / "degroot_base.yaml")
+    base_config = load_base_config()
     config = small_network_config(base_config, n_agents=5)
     save_config(config, OUTPUT_DIR / "config.yaml")
 

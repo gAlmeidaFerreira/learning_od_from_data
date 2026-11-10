@@ -12,11 +12,14 @@ learning_od_from_data/
 ├── src/
 │   ├── __init__.py                    # Marks src as a Python package.
 │   ├── config.py                      # Loads YAML config files into parameter dataclasses.
-│   ├── model.py                       # Network, opinion dynamics and observation (noise) layers.
+│   ├── model.py                       # Network, opinion dynamics and expression layers.
+│   ├── observation.py                 # Observation layer: noisy posts Y, their likelihood, expression estimates.
+│   ├── neighbour_inputs.py            # Neighbour-input modes shared by the per-agent filters.
 │   ├── simulate.py                    # Generates ground-truth hidden opinions and noisy observations.
 │   ├── kalman.py                      # Exact Kalman-filter likelihood (joint and per-agent), the reference for the particle filter.
 │   └── particle_filter.py             # Particle-filter estimate of the log-likelihood (joint and per-agent).
 ├── checks/
+│   ├── common.py                      # Shared helpers: paths, base config, λ profiles, profile width.
 │   ├── check_joint_filter.py          # Joint particle filter vs. the exact joint Kalman likelihood.
 │   ├── check_per_agent_filter.py      # Per-agent particle filter vs. the per-agent Kalman filter.
 │   └── check_plugin_bias.py           # Bias from plug-in neighbour inputs (per-agent vs. joint Kalman).
