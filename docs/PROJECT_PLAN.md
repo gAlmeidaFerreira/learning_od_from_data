@@ -37,7 +37,9 @@ $$
 ### 1.2 Inference
 
 - The particle filter computes the likelihood $p(Y \mid \psi)$ and filtered opinions as a by-product.
-- Parameters: grid or optimizer first, then IF2, then PMMH.
+- Parameters: grid or optimizer first, then IF2 to locate the high-likelihood region, then PMMH for the joint posterior $p(\lambda, \sigma_p, \sigma_e \mid Y)$: all parameters estimated together, credible intervals and correlations, and opinion trajectories with parameter uncertainty integrated out.
+- PMMH reference: for linear models, run MCMC with the exact Kalman likelihood to get a reference posterior; PMMH with the particle filter must reproduce it. Tune $N$ so that the sd of $\log\hat p(Y \mid \psi)$ is about 1–1.5; correlated PMMH later if more efficiency is needed.
+- PMMH is only as exact as the likelihood it uses: run it on the per-agent filter only after the input bias is fixed.
 - In an agent's own emission, expression and measurement noise integrate out in closed form, with total variance $\sigma_e^2 + \sigma_m^2$.
 - Neighbours' expressions are hidden inputs: (a) per-agent filter with plug-in inputs from $Y$, fast but biased; (b) joint filter over all agents on a small network, exact reference.
 - Finding (2026-11-10): with raw $Y$ as inputs, the per-agent filter overestimates $\lambda$ through attenuation, and grows more confident as it gets more wrong. Mean $\hat\lambda$ over 20 datasets (true $0.3$): $0.32, 0.40, 0.57, 0.76$ for $\sigma_m = 0.02, 0.05, 0.1, 0.2$, while the joint Kalman estimate stays near $0.3$. At the baseline $\sigma_m = 0.1$ the plug-in profile puts the truth more than 60 log-likelihood units below its peak.
@@ -46,7 +48,8 @@ $$
 
 ### 1.3 Evaluation
 
-- [ ] Correctness: particle-filter log-likelihood matches the joint Kalman filter (linear model, continuous $Y$)
+- [x] Correctness: particle-filter log-likelihood matches the joint Kalman filter (linear model, continuous $Y$)
+- [ ] PMMH vs. Kalman-MCMC reference posterior (linear model): same posterior means, intervals and correlations
 - [ ] Parameter recovery vs. number of steps $T$, number of agents $n$ and noise level: bias, interval coverage, smallest usable $T$
 - [ ] Cost of approximations: discrete observation and plug-in inputs, version (a) vs. (b). Raw plug-in inputs measured (see Finding in 1.2); corrected inputs still to measure
 - [ ] Identifiability: $\sigma_e$ vs. influence parameters; multimodal posteriors under bounded confidence
@@ -57,6 +60,28 @@ $$
 - [ ] Heterogeneous posting rates; agents update only when exposed to new posts
 - [ ] Several posts per time step (time steps as windows); weight = product over posts
 - [ ] Posting rate that depends on opinion (informative silence), modeled in the likelihood
+
+### 1.5 Heterogeneous agents
+
+Detect agent-level differences, such as who is stubborn or each agent's confidence range. Starts after corrected neighbour inputs and PMMH are in place, and before Phase 2: Beta beliefs bring their own stubbornness through certainty $\kappa_i$, which would be confounded with heterogeneous $\lambda_i$.
+
+- Models: hierarchical, e.g. $\mathrm{logit}\,\lambda_i \sim \mathcal N(\mu_\lambda, \tau_\lambda^2)$ with partial pooling; or agent types $z_i \in \{\text{stubborn}, \text{flexible}\}$ with posterior $P(z_i = 1 \mid Y)$.
+- Inference: Gibbs-style updates alternating between population parameters and each agent's own parameters (plain PMMH does not scale to $n$ extra parameters).
+- Expected difficulties: $\lambda_i$ is identified only when agent $i$'s neighbours disagree with it, so there is little information near consensus; agents with few neighbours or posts stay uncertain; $\epsilon_i$ is informative only when neighbours come near the boundary.
+
+Stages:
+
+- [ ] DeGroot with per-agent $\lambda_i$ (exact Kalman reference still available)
+- [ ] FJ with per-agent attachment to the initial opinion (zealots; still linear)
+- [ ] Bounded confidence with per-agent range $\epsilon_i$
+
+Evaluation:
+
+- [ ] Recovery of the population spread $\tau_\lambda$
+- [ ] Correlation between estimated and true $\lambda_i$
+- [ ] Detection of stubborn agents: AUC, and share of the top-$k$ flagged agents that are truly stubborn
+- [ ] Calibration of per-agent credible intervals
+- [ ] All of the above as functions of $T$, $n$ and the noise level
 
 ## Phase 2 — Beta hidden opinions
 
@@ -121,6 +146,7 @@ Decisions are logged newest first; add a row whenever the plan changes.
 
 | Date | Decision |
 | --- | --- |
+| 2026-11-10 | Added Phase 1.5, heterogeneous agents (per-agent $\lambda_i$, FJ zealots, per-agent $\epsilon_i$), after corrected inputs and PMMH and before Phase 2; PMMH validated against Kalman-likelihood MCMC |
 | 2026-11-10 | Raw plug-in inputs make the per-agent filter unusable for $\lambda$ at realistic noise ($\hat\lambda \approx 0.57$ vs. true $0.3$ at $\sigma_m = 0.1$, with overconfident profiles); next step is corrected neighbour inputs, benchmarked with `check_plugin_bias.py` |
 | 2026-11-09 | No GPU for now: a per-agent likelihood evaluation takes ~0.2 s on CPU ($n=50$, $T=100$, $N=500$); parallelize across runs before considering JAX/GPU |
 | 2026-11-09 | Added robustness experiment: fit with a perturbed network to measure sensitivity to network measurement error |
