@@ -7,7 +7,7 @@ Nov 8, 2026 · @Guilherme
 The project builds a hidden-state algorithm that learns opinion dynamics from limited, noisy data: latent opinions evolve on a network, people only see each other's expressions, and researchers only see noisy labels of those expressions. Parameters are inferred with a particle-filter likelihood, with the hidden trajectories integrated out.
 
 - **Current phase:** Phase 1, scalar hidden opinions on simulated data.
-- **Next action:** add corrected neighbour inputs to the per-agent filter: replace raw labels $Y_{j,t-1}$ by the filtered estimate $\hat s_{j,t-1} = \mathbb E[s_{j,t-1} \mid Y_{0:t-1}]$ computed by the neighbours' own filters in the same pass, optionally adding the input uncertainty to the process noise; measure the remaining bias with `checks/check_plugin_bias.py`.
+- **Next action:** implement PMMH (correlated version) on the per-agent particle filter with corrected inputs, and validate its posterior for $(\lambda, \sigma_p, \sigma_e)$ against Kalman-likelihood MCMC on the baseline, for both `filtered` and `filtered_var` inputs.
 - **Repository:** config loader, DeGroot model, simulator, joint and per-agent Kalman and particle filters, and check scripts in place.
 
 ## Phase 1 — Scalar hidden opinions vs. classical models
@@ -38,7 +38,8 @@ $$
 
 - The particle filter computes the likelihood $p(Y \mid \psi)$ and filtered opinions as a by-product.
 - Parameters: grid or optimizer first, then IF2 to locate the high-likelihood region, then PMMH for the joint posterior $p(\lambda, \sigma_p, \sigma_e \mid Y)$: all parameters estimated together, credible intervals and correlations, and opinion trajectories with parameter uncertainty integrated out.
-- PMMH reference: for linear models, run MCMC with the exact Kalman likelihood to get a reference posterior; PMMH with the particle filter must reproduce it. Tune $N$ so that the sd of $\log\hat p(Y \mid \psi)$ is about 1–1.5; correlated PMMH later if more efficiency is needed.
+- PMMH reference: for linear models, run MCMC with the exact Kalman likelihood to get a reference posterior; PMMH with the particle filter must reproduce it. Tune $N$ so that the sd of $\log\hat p(Y \mid \psi)$ is about 1–1.5 (standard PMMH), or so that the sd of the log-likelihood *ratio* between current and proposed points is about 1 (correlated PMMH).
+- Correlated PMMH (implement from the start): all random numbers used by the particle filter are one Gaussian array $u$ (initial draws, process noise, `filtered_var` input draws, and resampling uniforms obtained as $\Phi(z)$ of Gaussians). Each iteration proposes $\psi'$ together with $u' = \rho\, u + \sqrt{1-\rho^2}\,\varepsilon$, $\varepsilon \sim \mathcal N(0, I)$, $\rho \approx 0.99$–$0.999$, and accepts both or neither. Likelihood estimates at $\psi$ and $\psi'$ then share most of their noise, so the ratio is far less noisy and far fewer particles are needed. Resampling breaks the correlation unless particles are sorted first; in the per-agent filter each state is scalar, so sorting each column by $x$ before systematic resampling is enough. The filter therefore takes pre-drawn arrays instead of an `rng`; standard PMMH is the special case $\rho = 0$, and both are validated against the Kalman-MCMC reference.
 - PMMH is only as exact as the likelihood it uses: run it on the per-agent filter only after the input bias is fixed.
 - In an agent's own emission, expression and measurement noise integrate out in closed form, with total variance $\sigma_e^2 + \sigma_m^2$.
 - Neighbours' expressions are hidden inputs: (a) per-agent filter with plug-in inputs from $Y$, fast but biased; (b) joint filter over all agents on a small network, exact reference.
@@ -59,14 +60,16 @@ $$
 
   in the particle version each particle draws its own neighbour expressions $\hat s_t + \sqrt{v_t}\,\eta$, $\eta \sim \mathcal N(0, I)$, which reuses `model.step` unchanged and carries over to nonlinear models such as bounded confidence.
 - Input modes compared: `observed` ($Y_{j,t-1}$; biased, overconfident), `filtered` ($\hat s_{j,t-1}$; should remove most of the bias), `filtered_var` ($\hat s_{j,t-1}$ plus its uncertainty; should also bring the profile width close to the joint Kalman one). Any remaining gap is the cost of dropping the cross-agent covariances that the joint Kalman filter keeps.
+- Finding (2026-11-10, corrected inputs; 20 datasets per $\sigma_m$, other parameters at truth): up to the baseline noise both corrected modes match the exact joint Kalman estimator in bias and profile width. At $\sigma_m = 0.1$: mean $\hat\lambda$ is $0.27$ (joint), $0.57$ (`observed`), $0.28$ (`filtered`), $0.25$ (`filtered_var`); 2-unit profile widths $0.160$, $0.08$, $0.178$, $0.164$. At $\sigma_m = 0.2$ the per-agent approximation breaks down: `filtered` stays centred ($0.31$) but very uncertain (sd $0.24$, width $0.36$ vs. $0.31$ exact); `filtered_var` is biased low ($0.11$ vs. $0.24$ exact) and too narrow ($0.21$). Hypothesis, untested: the input-variance term $(1-\lambda)^2 \sum_j W_{ij}^2 v_j$ grows as $\lambda$ falls and absorbs scatter, and it treats input errors as independent over time and across agents when they are correlated.
+- The per-agent particle filter with `filtered_var` follows its Kalman profile but jitters by about $\pm 3$ log-likelihood units near the peak at $N = 500$: too noisy for standard PMMH, which motivates correlated PMMH.
 - Steps without a post: propagate particles, skip weighting and resampling.
 
 ### 1.3 Evaluation
 
 - [x] Correctness: particle-filter log-likelihood matches the joint Kalman filter (linear model, continuous $Y$)
-- [ ] PMMH vs. Kalman-MCMC reference posterior (linear model): same posterior means, intervals and correlations
+- [ ] PMMH vs. Kalman-MCMC reference posterior (linear model): same posterior means, intervals and correlations; standard and correlated PMMH; `filtered` and `filtered_var` inputs; interval coverage over repeated datasets decides the default input mode
 - [ ] Parameter recovery vs. number of steps $T$, number of agents $n$ and noise level: bias, interval coverage, smallest usable $T$
-- [ ] Cost of approximations: discrete observation and plug-in inputs, version (a) vs. (b). Raw plug-in inputs measured (see Finding in 1.2); corrected inputs still to measure
+- [ ] Cost of approximations: discrete observation and plug-in inputs, version (a) vs. (b). Raw and corrected plug-in inputs measured with other parameters at truth (see Findings in 1.2); still to measure under joint estimation with PMMH and for the discrete observation
 - [ ] Identifiability: $\sigma_e$ vs. influence parameters; multimodal posteriors under bounded confidence
 - [ ] Robustness to a misspecified network: simulate on the true $W$, fit with a perturbed one (a fraction of edges rewired or missing); measure how the estimates of $\lambda$, $\sigma_p$ and $\sigma_e$ degrade as the perturbation grows
 
@@ -164,6 +167,7 @@ Decisions are logged newest first; add a row whenever the plan changes.
 
 | Date | Decision |
 | --- | --- |
+| 2026-11-10 | Corrected neighbour inputs fix the per-agent filter up to the baseline noise ($\hat\lambda \approx 0.28$ vs. $0.57$ with raw labels at $\sigma_m = 0.1$); $\sigma_m = 0.2$ recorded as a known limitation. PMMH will be the correlated version from the start, with sorted per-agent resampling and pre-drawn random numbers |
 | 2026-11-10 | Shared code gets one home: observation formulas in `src/observation.py` (split from `model.py`), input modes in `src/neighbour_inputs.py`, check helpers in `checks/common.py` |
 | 2026-11-10 | Added Phase 1.5, heterogeneous agents (per-agent $\lambda_i$, FJ zealots, per-agent $\epsilon_i$), after corrected inputs and PMMH and before Phase 2; PMMH validated against Kalman-likelihood MCMC |
 | 2026-11-10 | Raw plug-in inputs make the per-agent filter unusable for $\lambda$ at realistic noise ($\hat\lambda \approx 0.57$ vs. true $0.3$ at $\sigma_m = 0.1$, with overconfident profiles); next step is corrected neighbour inputs, benchmarked with `check_plugin_bias.py` |
@@ -182,7 +186,8 @@ Decisions are logged newest first; add a row whenever the plan changes.
 
 Open questions:
 
-- [ ] Do corrected neighbour inputs remove the attenuation bias in $\lambda$, and does the per-agent likelihood stay overconfident?
+- [ ] Why does `filtered_var` become biased low and too narrow at $\sigma_m = 0.2$, and does joint estimation of $\sigma_p$, $\sigma_e$ change the picture?
+- [ ] Which input mode (`filtered` or `filtered_var`) gives correct posterior coverage under PMMH?
 - [ ] Can $\sigma_e$ and $\sigma_m$ be recovered jointly, or must $\sigma_m$ stay fixed?
 - [ ] Time step size for real data
 - [ ] Real dataset for Phase 3
