@@ -44,6 +44,21 @@ $$
 - Neighbours' expressions are hidden inputs: (a) per-agent filter with plug-in inputs from $Y$, fast but biased; (b) joint filter over all agents on a small network, exact reference.
 - Finding (2026-11-10): with raw $Y$ as inputs, the per-agent filter overestimates $\lambda$ through attenuation, and grows more confident as it gets more wrong. Mean $\hat\lambda$ over 20 datasets (true $0.3$): $0.32, 0.40, 0.57, 0.76$ for $\sigma_m = 0.02, 0.05, 0.1, 0.2$, while the joint Kalman estimate stays near $0.3$. At the baseline $\sigma_m = 0.1$ the plug-in profile puts the truth more than 60 log-likelihood units below its peak.
 - Fixes, in order of preference: (1) corrected inputs, i.e. filtered estimates of $s_j$ in place of $Y_j$, computed causally in the same pass (filtered, not smoothed, so an agent's own later posts never leak into its inputs), with the input variance optionally added to the process noise; (2) neighbourhood (block) filters that also track neighbours' states; (3) simulation-based bias correction.
+- Corrected inputs in detail. After the update at $t$, agent $j$'s filter has opinion mean $m_{j,t}$ and variance $P_{j,t}$; with $\kappa = \sigma_e^2/(\sigma_e^2+\sigma_m^2)$ the estimated expression and its variance are
+
+$$
+\hat s_{j,t} = (1-\kappa)\, m_{j,t} + \kappa\, Y_{j,t}, \qquad v_{j,t} = (1-\kappa)^2 P_{j,t} + (1-\kappa)\,\sigma_e^2 ,
+$$
+
+  and agent $i$ reads $\sum_j W_{ij}\hat s_{j,t}$ at step $t+1$. When $\sigma_m \to 0$, $\kappa \to 1$ and $\hat s \to Y$, so all modes coincide (built-in check).
+- Input uncertainty (optional, mode `filtered_var`): $\hat s$ is still uncertain, and treating it as exact keeps the likelihood overconfident. In the Kalman version the input variance is added to the prediction,
+
+$$
+\mathrm{Var}(x_{i,t+1} \mid \cdot) = \lambda^2 P_{i,t} + \sigma_p^2 + (1-\lambda)^2 \sum_j W_{ij}^2\, v_{j,t} ;
+$$
+
+  in the particle version each particle draws its own neighbour expressions $\hat s_t + \sqrt{v_t}\,\eta$, $\eta \sim \mathcal N(0, I)$, which reuses `model.step` unchanged and carries over to nonlinear models such as bounded confidence.
+- Input modes compared: `observed` ($Y_{j,t-1}$; biased, overconfident), `filtered` ($\hat s_{j,t-1}$; should remove most of the bias), `filtered_var` ($\hat s_{j,t-1}$ plus its uncertainty; should also bring the profile width close to the joint Kalman one). Any remaining gap is the cost of dropping the cross-agent covariances that the joint Kalman filter keeps.
 - Steps without a post: propagate particles, skip weighting and resampling.
 
 ### 1.3 Evaluation
