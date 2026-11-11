@@ -135,12 +135,14 @@ The repository starts small and grows one verified step at a time.
 | File | Role | State |
 | --- | --- | --- |
 | `configs/degroot_base.yaml` | Parameter values for one run | Filled |
+| `configs/inference_base.yaml` | Priors, MCMC and PMMH settings for parameter inference | Filled |
 | `src/config.py` | Loads YAML into strict dataclasses | Implemented |
 | `src/model.py` | Network, dynamics and expression layers | DeGroot implemented |
 | `src/observation.py` | Observation layer: simulation of $Y$, its likelihood, and expression estimates from $(x, Y)$ shared by the filters | Continuous observation implemented |
 | `src/neighbour_inputs.py` | Neighbour-input modes of the per-agent filters (`observed`, `filtered`, `filtered_var`) | Implemented |
 | `src/simulate.py` | Ground truth $x$, $s$, $Y$ and posting mask $P$ | Implemented (Gaussian x0, save/load) |
 | `src/kalman.py` | Exact Kalman log-likelihood (linear-Gaussian reference) | Joint and per-agent Kalman log-likelihood; per-agent with observed / filtered / filtered_var neighbour inputs |
+| `src/inference.py` | Pseudo-marginal MH: exact MH on Kalman likelihoods, correlated PMMH on the particle filter | Implemented |
 | `src/particle_filter.py` | Log-likelihood estimator | Joint and per-agent filters (continuous observation); per-agent with observed / filtered / filtered_var neighbour inputs; noise-driven per-agent filter with sorted resampling (for correlated PMMH) |
 | `checks/check_joint_filter.py` | Joint particle filter vs. joint Kalman filter | PF vs Kalman comparison |
 | `checks/common.py` | Shared helpers for the check scripts (paths, base config, $\lambda$ profiles, profile width) | Implemented |
@@ -148,6 +150,7 @@ The repository starts small and grows one verified step at a time.
 | `checks/check_per_agent_filter.py` | Per-agent particle filter vs. per-agent Kalman filter | Implemented |
 | `checks/check_plugin_bias.py` | Plug-in bias: per-agent vs. joint Kalman estimates of $\lambda$ | Implemented |
 | `checks/check_correlated_pf.py` | Unbiasedness, smoothness and correlation payoff of the noise-driven filter | Implemented |
+| `checks/check_pmmh.py` | Posteriors of $(\lambda, \sigma_p, \sigma_e)$: exact MH on joint and per-agent Kalman vs. correlated and standard PMMH | Implemented |
 | `notebooks/01_sanity_checks.ipynb` | Sanity checks of the model layer (classical limit, noise, reproducibility) | DeGroot, simulator and Kalman checks passing |
 | `notebooks/02_simulate_and_filter.ipynb` | Simulation and filtering exploration and plots | Empty |
 

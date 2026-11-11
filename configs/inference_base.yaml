@@ -1,0 +1,19 @@
+# Settings for parameter inference (exact MH on Kalman likelihoods and PMMH on the particle filter).
+
+seed: 7                         # random seed for the MCMC chains (proposals, acceptance, filter noise)
+
+priors:                         # independent priors on the parameters ψ = (λ, σ_p, σ_e); σ_m stays fixed
+  self_weight: {dist: uniform, low: 0.0, high: 1.0}                  # λ
+  process_noise_sd: {dist: lognormal, median: 0.1, log_sd: 1.0}      # σ_p: log σ_p ~ N(log 0.1, 1²)
+  expression_noise_sd: {dist: lognormal, median: 0.1, log_sd: 1.0}   # σ_e: log σ_e ~ N(log 0.1, 1²)
+
+mcmc:                           # random-walk Metropolis–Hastings on θ = (logit λ, log σ_p, log σ_e)
+  n_iterations: 10000           # total iterations, burn-in included
+  burn_in: 2000                 # iterations discarded; the proposal adapts only during them
+  adapt_every: 100              # proposal covariance update interval during burn-in
+  initial_step_sd: 0.02         # per coordinate of θ, before adaptation
+
+pmmh:                           # pseudo-marginal settings for the particle-filter likelihood
+  n_particles: 100              # from check_correlated_pf; fallback 200 if mixing is poor
+  rho: 0.99                     # Crank–Nicolson correlation of the filter's random numbers
+  input_mode: filtered_var      # neighbour inputs of the per-agent filter
