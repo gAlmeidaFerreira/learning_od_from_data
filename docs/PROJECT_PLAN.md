@@ -141,11 +141,12 @@ The repository starts small and grows one verified step at a time.
 | `src/neighbour_inputs.py` | Neighbour-input modes of the per-agent filters (`observed`, `filtered`, `filtered_var`) | Implemented |
 | `src/simulate.py` | Ground truth $x$, $s$, $Y$ and posting mask $P$ | Implemented (Gaussian x0, save/load) |
 | `src/kalman.py` | Exact Kalman log-likelihood (linear-Gaussian reference) | Joint and per-agent Kalman log-likelihood; per-agent with observed / filtered / filtered_var neighbour inputs |
-| `src/particle_filter.py` | Log-likelihood estimator | Joint and per-agent filters (continuous observation); per-agent with observed / filtered / filtered_var neighbour inputs |
+| `src/particle_filter.py` | Log-likelihood estimator | Joint and per-agent filters (continuous observation); per-agent with observed / filtered / filtered_var neighbour inputs; noise-driven per-agent filter with sorted resampling (for correlated PMMH) |
 | `checks/check_joint_filter.py` | Joint particle filter vs. joint Kalman filter | PF vs Kalman comparison |
 | `checks/common.py` | Shared helpers for the check scripts (paths, base config, $\lambda$ profiles, profile width) | Implemented |
 | `checks/check_per_agent_filter.py` | Per-agent particle filter vs. per-agent Kalman filter | Implemented |
 | `checks/check_plugin_bias.py` | Plug-in bias: per-agent vs. joint Kalman estimates of $\lambda$ | Implemented |
+| `checks/check_correlated_pf.py` | Unbiasedness, smoothness and correlation payoff of the noise-driven filter | Implemented |
 | `notebooks/01_sanity_checks.ipynb` | Sanity checks of the model layer (classical limit, noise, reproducibility) | DeGroot, simulator and Kalman checks passing |
 | `notebooks/02_simulate_and_filter.ipynb` | Simulation and filtering exploration and plots | Empty |
 
