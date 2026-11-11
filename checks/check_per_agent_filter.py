@@ -9,7 +9,7 @@ from itertools import combinations
 
 import numpy as np
 
-from checks.common import CHECK_RESULTS_DIR, load_base_config, with_model_params
+from checks.common import CHECK_RESULTS_DIR, describe_dataset, load_base_config, with_model_params
 from src import kalman, simulate
 from src.config import Config, save_config
 from src.neighbour_inputs import INPUT_MODES, InputMode
@@ -91,8 +91,7 @@ def main() -> None:
     save_config(config, OUTPUT_DIR / "config.yaml")
 
     dataset = simulate.simulate(config)
-    print(f"Dataset: n = {config.network.n_agents}, T = {config.simulation.T}, "
-          f"σ_e = {config.model.expression_noise_sd}, σ_m = {config.model.measurement_noise_sd}")
+    print(describe_dataset(config))
 
     results_by_mode = {input_mode: check_pf_against_kalman(config, dataset, input_mode) for input_mode in INPUT_MODES}
     mode_gaps = check_modes_agree_without_measurement_noise(config)

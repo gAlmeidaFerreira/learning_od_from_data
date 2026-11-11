@@ -9,6 +9,17 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from checks.common import CHECK_RESULTS_DIR, REPO_ROOT, load_base_config, self_weight_profile
+from checks.plotting import (
+    ESTIMATE_STYLE,
+    EXACT_STYLE,
+    POINTS_STYLE,
+    ProfileCurve,
+    dataset_title,
+    plot_self_weight_profiles,
+    save_figure,
+    set_log_ticks,
+    style_axes,
+)
 from src import kalman, simulate
 from src.config import Config, save_config
 from src.particle_filter import joint_pf_loglik
@@ -110,23 +121,14 @@ def check_profile(config: Config, dataset: dict) -> Path:
           f"PF = {self_weight_grid[pf_profile.argmax()]:.2f}; "
           f"max |PF − Kalman| = {np.max(np.abs(pf_profile - kalman_profile)):.3f}")
 
-    fig, ax = plt.subplots(figsize=(7, 4))
-    ax.plot(self_weight_grid, kalman_profile, color="0.15", linewidth=1.8, label="Kalman (exact)")
-    ax.plot(self_weight_grid, pf_profile, color="C0", linewidth=1.5, linestyle="--", marker="o", markersize=4,
-            label=rf"particle filter ($N = {N_PARTICLES_PROFILE}$, common seed)")
-    ax.axvline(config.model.self_weight, color="0.5", linestyle=":", linewidth=1.2,
-               label=rf"true $\lambda = {config.model.self_weight}$")
-    ax.set_xlabel(r"$\lambda$")
-    ax.set_ylabel(r"$\log p(Y \mid \lambda, \sigma_p, \sigma_e)$")
-    ax.set_title(rf"Profile over $\lambda$: Kalman vs. particle filter ($n = {dataset['W'].shape[0]}$, "
-                 rf"$T = {config.simulation.T}$)")
-    ax.legend(frameon=False)
-    ax.grid(alpha=0.25)
-    fig.tight_layout()
-    figure_path = OUTPUT_DIR / "lambda_profile.png"
-    fig.savefig(figure_path, dpi=150)
-    plt.close(fig)
-    return figure_path
+    return plot_self_weight_profiles(
+        OUTPUT_DIR / "lambda_profile.png", self_weight_grid,
+        [ProfileCurve(kalman_profile, "Kalman (exact)", EXACT_STYLE),
+         ProfileCurve(pf_profile, rf"particle filter ($N = {N_PARTICLES_PROFILE}$, common seed)",
+                      {**ESTIMATE_STYLE, "color": "C0"})],
+        config.model.self_weight, rf"Profile over $\lambda$: Kalman vs. particle filter {dataset_title(config)}",
+        relative=False, figsize=(7, 4),
+    )
 
 
 def check_dimension_effect(base_config: Config) -> tuple[dict, Path]:
@@ -150,22 +152,13 @@ def check_dimension_effect(base_config: Config) -> tuple[dict, Path]:
     agent_counts = np.array(DIMENSION_AGENT_COUNTS)
     spreads = np.array([dimension_results[n_agents]["sd_d"] for n_agents in DIMENSION_AGENT_COUNTS])
     fig, ax = plt.subplots(figsize=(6, 4))
-    ax.plot(agent_counts, spreads, color="C0", linewidth=1.8, marker="o", markersize=6)
-    ax.set_xscale("log", base=2)
-    ax.set_yscale("log")
-    ax.set_xticks(agent_counts, [str(n_agents) for n_agents in agent_counts])
-    spread_ticks = [0.125, 0.25, 0.5, 1, 2, 4, 8, 16]
-    ax.set_yticks(spread_ticks, [f"{tick:g}" for tick in spread_ticks])
+    ax.plot(agent_counts, spreads, color="C0", **POINTS_STYLE)
+    set_log_ticks(ax, agent_counts, base=2)
+    set_log_ticks(ax, [0.125, 0.25, 0.5, 1, 2, 4, 8, 16], axis="y")
     ax.set_ylim(spreads.min() / 1.5, spreads.max() * 1.5)
-    ax.minorticks_off()
-    ax.set_xlabel(r"number of agents $n$")
-    ax.set_ylabel(r"$\mathrm{sd}(\hat\ell_{\mathrm{PF}} - \ell_{\mathrm{Kalman}})$")
-    ax.set_title(rf"Joint PF spread vs. network size ($N = {N_PARTICLES_DIMENSION}$, $T = 50$)")
-    ax.grid(alpha=0.25, which="both")
-    fig.tight_layout()
-    figure_path = OUTPUT_DIR / "dimension_effect.png"
-    fig.savefig(figure_path, dpi=150)
-    plt.close(fig)
+    style_axes(ax, r"number of agents $n$", r"$\mathrm{sd}(\hat\ell_{\mathrm{PF}} - \ell_{\mathrm{Kalman}})$",
+               rf"Joint PF spread vs. network size ($N = {N_PARTICLES_DIMENSION}$, $T = 50$)", legend=False)
+    figure_path = save_figure(fig, OUTPUT_DIR / "dimension_effect.png")
     return dimension_results, figure_path
 
 

@@ -20,9 +20,11 @@ learning_od_from_data/
 │   └── particle_filter.py             # Particle-filter estimate of the log-likelihood (joint and per-agent).
 ├── checks/
 │   ├── common.py                      # Shared helpers: paths, base config, λ profiles, profile width.
+│   ├── plotting.py                    # Shared figure helpers: style, λ-profile figure, log ticks, saving.
 │   ├── check_joint_filter.py          # Joint particle filter vs. the exact joint Kalman likelihood.
 │   ├── check_per_agent_filter.py      # Per-agent particle filter vs. the per-agent Kalman filter.
-│   └── check_plugin_bias.py           # Bias from plug-in neighbour inputs (per-agent vs. joint Kalman).
+│   ├── check_plugin_bias.py           # Bias from plug-in neighbour inputs (per-agent vs. joint Kalman).
+│   └── check_correlated_pf.py         # Noise-driven filter: unbiasedness, smoothness, correlation payoff.
 ├── notebooks/
 │   ├── 01_sanity_checks.ipynb         # Sanity checks of the model, simulator and Kalman filter.
 │   └── 02_simulate_and_filter.ipynb   # Simulation and filtering exploration (empty for now).

@@ -144,6 +144,7 @@ The repository starts small and grows one verified step at a time.
 | `src/particle_filter.py` | Log-likelihood estimator | Joint and per-agent filters (continuous observation); per-agent with observed / filtered / filtered_var neighbour inputs; noise-driven per-agent filter with sorted resampling (for correlated PMMH) |
 | `checks/check_joint_filter.py` | Joint particle filter vs. joint Kalman filter | PF vs Kalman comparison |
 | `checks/common.py` | Shared helpers for the check scripts (paths, base config, $\lambda$ profiles, profile width) | Implemented |
+| `checks/plotting.py` | Shared figure helpers for the check scripts (style, $\lambda$-profile figure, log ticks, saving) | Implemented |
 | `checks/check_per_agent_filter.py` | Per-agent particle filter vs. per-agent Kalman filter | Implemented |
 | `checks/check_plugin_bias.py` | Plug-in bias: per-agent vs. joint Kalman estimates of $\lambda$ | Implemented |
 | `checks/check_correlated_pf.py` | Unbiasedness, smoothness and correlation payoff of the noise-driven filter | Implemented |

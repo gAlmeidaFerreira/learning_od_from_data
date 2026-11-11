@@ -21,7 +21,17 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
-from checks.common import CHECK_RESULTS_DIR, REPO_ROOT, load_base_config, self_weight_profile
+from checks.common import CHECK_RESULTS_DIR, REPO_ROOT, describe_dataset, load_base_config, self_weight_profile
+from checks.plotting import (
+    ESTIMATE_STYLE,
+    EXACT_STYLE,
+    POINTS_STYLE,
+    ProfileCurve,
+    plot_self_weight_profiles,
+    save_figure,
+    set_log_ticks,
+    style_axes,
+)
 from src import kalman, simulate
 from src.config import Config, ModelParams, save_config
 from src.neighbour_inputs import InputMode
@@ -123,26 +133,17 @@ def check_smoothness(config: Config, dataset: dict) -> tuple[dict, Path]:
     for sort_particles, rms in rms_deviations.items():
         print(f"    {'sorted' if sort_particles else 'unsorted':<9} {rms:.3f}")
 
-    true_self_weight = config.model.self_weight
-    fig, ax = plt.subplots(figsize=(7.5, 4.5))
-    ax.plot(PROFILE_GRID, kalman_profile - kalman_profile.max(), color="0.15", linewidth=1.8,
-            label="per-agent Kalman (exact for this model)")
-    ax.plot(PROFILE_GRID, pf_profiles[True] - pf_profiles[True].max(), color="C0", linewidth=1.2, marker="o",
-            markersize=3.5, label=rf"noise-driven PF, sorted resampling (RMS {rms_deviations[True]:.2f})")
-    ax.plot(PROFILE_GRID, pf_profiles[False] - pf_profiles[False].max(), color="C1", linewidth=1.0,
-            linestyle="--", marker="s", markersize=3,
-            label=rf"noise-driven PF, unsorted resampling (RMS {rms_deviations[False]:.2f})")
-    ax.axvline(true_self_weight, color="0.5", linestyle=":", linewidth=1.2, label=rf"true $\lambda = {true_self_weight}$")
-    ax.set_ylim(-60, 5)
-    ax.set_xlabel(r"$\lambda$")
-    ax.set_ylabel(r"relative log-likelihood $\ell(\lambda) - \max \ell$")
-    ax.set_title(rf"$\lambda$ profile with one fixed noise draw ($N = {PROFILE_PARTICLES}$, filtered inputs + variance)")
-    ax.legend(frameon=False, loc="lower left", fontsize=8.5)
-    ax.grid(alpha=0.25)
-    fig.tight_layout()
-    figure_path = OUTPUT_DIR / "profile_smoothness.png"
-    fig.savefig(figure_path, dpi=150)
-    plt.close(fig)
+    figure_path = plot_self_weight_profiles(
+        OUTPUT_DIR / "profile_smoothness.png", PROFILE_GRID,
+        [ProfileCurve(kalman_profile, "per-agent Kalman (exact for this model)", EXACT_STYLE),
+         ProfileCurve(pf_profiles[True], f"noise-driven PF, sorted resampling (RMS {rms_deviations[True]:.2f})",
+                      {**ESTIMATE_STYLE, "color": "C0", "linestyle": "-"}),
+         ProfileCurve(pf_profiles[False], f"noise-driven PF, unsorted resampling (RMS {rms_deviations[False]:.2f})",
+                      {**ESTIMATE_STYLE, "color": "C1", "marker": "s", "markersize": 3})],
+        config.model.self_weight,
+        rf"$\lambda$ profile with one fixed noise draw ($N = {PROFILE_PARTICLES}$, filtered inputs + variance)",
+        legend_fontsize=8.5,
+    )
     return rms_deviations, figure_path
 
 
@@ -196,21 +197,14 @@ def check_correlation_payoff(config: Config, dataset: dict, pool: ProcessPoolExe
     one_minus_correlation = [1 - correlation for correlation in PAYOFF_CORRELATIONS]
     for color, n_particles in zip(("C1", "C0"), PAYOFF_PARTICLE_COUNTS):
         ax.plot(one_minus_correlation, [summary[n_particles, correlation]["sd"] for correlation in PAYOFF_CORRELATIONS],
-                color=color, linewidth=1.6, marker="o", markersize=4.5, label=rf"$N = {n_particles}$")
+                color=color, label=rf"$N = {n_particles}$", **POINTS_STYLE)
     ax.axhline(1.0, color="0.5", linestyle=":", linewidth=1.2, label=r"target sd$(D) = 1$")
-    ax.set_xscale("log")
     ax.set_yscale("log")
+    set_log_ticks(ax, one_minus_correlation, [rf"$\rho = {correlation:g}$" for correlation in PAYOFF_CORRELATIONS])
     ax.invert_xaxis()
-    ax.set_xticks(one_minus_correlation, [rf"$\rho = {correlation:g}$" for correlation in PAYOFF_CORRELATIONS])
-    ax.minorticks_off()
-    ax.set_ylabel(r"sd of $D = \log\hat p(Y \mid \psi', u') - \log\hat p(Y \mid \psi, u)$")
-    ax.set_title("Correlated noise: spread of the log-likelihood ratio")
-    ax.legend(frameon=False)
-    ax.grid(alpha=0.25)
-    fig.tight_layout()
-    figure_path = OUTPUT_DIR / "log_ratio_sd_vs_correlation.png"
-    fig.savefig(figure_path, dpi=150)
-    plt.close(fig)
+    style_axes(ax, "", r"sd of $D = \log\hat p(Y \mid \psi', u') - \log\hat p(Y \mid \psi, u)$",
+               "Correlated noise: spread of the log-likelihood ratio")
+    figure_path = save_figure(fig, OUTPUT_DIR / "log_ratio_sd_vs_correlation.png")
     return summary, (cheapest, true_difference), figure_path
 
 
@@ -221,8 +215,7 @@ def main() -> None:
 
     dataset = simulate.simulate(config)
     dataset = {"y": dataset["y"], "W": dataset["W"]}      # only what the workers need
-    print(f"Dataset: n = {config.network.n_agents}, T = {config.simulation.T}, "
-          f"σ_e = {config.model.expression_noise_sd}, σ_m = {config.model.measurement_noise_sd}")
+    print(describe_dataset(config))
 
     with ProcessPoolExecutor() as pool:
         unbiasedness = check_unbiasedness(config, dataset, pool)

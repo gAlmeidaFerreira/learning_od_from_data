@@ -23,10 +23,23 @@ from checks.common import (
     CHECK_RESULTS_DIR,
     PROFILE_WIDTH_DROP,
     REPO_ROOT,
+    describe_dataset,
     load_base_config,
     profile_width,
     self_weight_profile,
     with_model_params,
+)
+from checks.plotting import (
+    ESTIMATE_STYLE,
+    EXACT_STYLE,
+    POINTS_STYLE,
+    ProfileCurve,
+    dataset_title,
+    mark_true_value,
+    plot_self_weight_profiles,
+    save_figure,
+    set_log_ticks,
+    style_axes,
 )
 from src import kalman, simulate
 from src.config import Config, save_config
@@ -59,6 +72,7 @@ def profile_by_method(y: np.ndarray, W: np.ndarray, config: Config, grid: np.nda
     profiles = {"joint": self_weight_profile(
         lambda params: kalman.kalman_loglik(y, W, params, config.simulation), config.model, grid
     )}
+    input_mode: InputMode               # declared so the lambda below keeps the Literal type
     for input_mode in INPUT_MODES:
         profiles[input_mode] = self_weight_profile(
             lambda params: kalman.per_agent_kalman_loglik(y, W, params, config.simulation, input_mode=input_mode),
@@ -95,54 +109,29 @@ def check_profiles(config: Config, dataset: dict) -> tuple[dict, dict, list[Path
         print(f"    {name:<20} {argmaxes[name]:>9.3f} {widths[name]:>15.3f}")
     print(f"    true λ = {true_self_weight}")
 
-    figure_paths = []
-
-    # Original figure: joint Kalman, per-agent Kalman and per-agent PF with observed (plug-in) inputs.
-    # The per-agent PF estimates the per-agent Kalman curve, so it is shifted by the same constant.
-    observed_peak = kalman_profiles["observed"].max()
-    fig, ax = plt.subplots(figsize=(7.5, 4.5))
-    ax.plot(PROFILE_GRID, kalman_profiles["joint"] - kalman_profiles["joint"].max(), color="0.15", linewidth=1.8,
-            label="joint Kalman (exact model)")
-    ax.plot(PROFILE_GRID, kalman_profiles["observed"] - observed_peak, color="C1", linewidth=1.8,
-            label="per-agent Kalman (plug-in model)")
-    ax.plot(PROFILE_GRID, pf_profiles["observed"] - observed_peak, color="C0", linewidth=1.2, linestyle="--",
-            marker="o", markersize=3.5, label=rf"per-agent PF ($N = {N_PARTICLES}$, common seed)")
-    ax.axvline(true_self_weight, color="0.5", linestyle=":", linewidth=1.2, label=rf"true $\lambda = {true_self_weight}$")
-    ax.set_ylim(-60, 5)
-    ax.set_xlabel(r"$\lambda$")
-    ax.set_ylabel(r"relative log-likelihood $\ell(\lambda) - \ell(\hat\lambda)$")
-    ax.set_title(rf"Plug-in bias in the $\lambda$ profile ($n = {config.network.n_agents}$, "
-                 rf"$T = {config.simulation.T}$, $\sigma_m = {config.model.measurement_noise_sd}$)")
-    ax.legend(frameon=False, loc="lower left")
-    ax.grid(alpha=0.25)
-    fig.tight_layout()
-    figure_paths.append(OUTPUT_DIR / "lambda_profiles.png")
-    fig.savefig(figure_paths[-1], dpi=150)
-    plt.close(fig)
-
-    # New figure: every input mode. The PF ("filtered_var") is shifted by its Kalman curve's peak.
-    fig, ax = plt.subplots(figsize=(8, 4.8))
-    for method in METHODS:
-        profile = kalman_profiles[method]
-        ax.plot(PROFILE_GRID, profile - profile.max(), color=METHOD_COLORS[method], linewidth=1.8,
-                label=METHOD_LABELS[method])
-    ax.plot(PROFILE_GRID, pf_profiles["filtered_var"] - kalman_profiles["filtered_var"].max(),
-            color=METHOD_COLORS["filtered_var"], linewidth=1.0, linestyle="--", marker="o", markersize=3.5,
-            label=rf"per-agent PF, filtered inputs + variance ($N = {N_PARTICLES}$, common seed)")
-    ax.axhline(-WIDTH_DROP, color="0.6", linestyle="-.", linewidth=0.9,
-               label=rf"$-{WIDTH_DROP:g}$ (profile width level)")
-    ax.axvline(true_self_weight, color="0.5", linestyle=":", linewidth=1.2, label=rf"true $\lambda = {true_self_weight}$")
-    ax.set_ylim(-60, 5)
-    ax.set_xlabel(r"$\lambda$")
-    ax.set_ylabel(r"relative log-likelihood $\ell(\lambda) - \ell(\hat\lambda)$")
-    ax.set_title(rf"$\lambda$ profiles by neighbour-input mode ($n = {config.network.n_agents}$, "
-                 rf"$T = {config.simulation.T}$, $\sigma_m = {config.model.measurement_noise_sd}$)")
-    ax.legend(frameon=False, loc="lower left", fontsize=8.5)
-    ax.grid(alpha=0.25)
-    fig.tight_layout()
-    figure_paths.append(OUTPUT_DIR / "lambda_profiles_by_input_mode.png")
-    fig.savefig(figure_paths[-1], dpi=150)
-    plt.close(fig)
+    # The per-agent PF estimates the per-agent Kalman curve, so it is shifted by that curve's peak.
+    sigma_m_title = dataset_title(config, rf"$\sigma_m = {config.model.measurement_noise_sd}$")
+    method_styles = {method: {"color": METHOD_COLORS[method], "linewidth": 1.8} for method in METHODS}
+    figure_paths = [
+        plot_self_weight_profiles(  # original figure: observed (plug-in) inputs only
+            OUTPUT_DIR / "lambda_profiles.png", PROFILE_GRID,
+            [ProfileCurve(kalman_profiles["joint"], METHOD_LABELS["joint"], EXACT_STYLE),
+             ProfileCurve(kalman_profiles["observed"], "per-agent Kalman (plug-in model)", method_styles["observed"]),
+             ProfileCurve(pf_profiles["observed"], rf"per-agent PF ($N = {N_PARTICLES}$, common seed)",
+                          {**ESTIMATE_STYLE, "color": "C0"}, peak=kalman_profiles["observed"].max())],
+            true_self_weight, rf"Plug-in bias in the $\lambda$ profile {sigma_m_title}",
+        ),
+        plot_self_weight_profiles(  # every input mode
+            OUTPUT_DIR / "lambda_profiles_by_input_mode.png", PROFILE_GRID,
+            [ProfileCurve(kalman_profiles[method], METHOD_LABELS[method], method_styles[method]) for method in METHODS]
+            + [ProfileCurve(pf_profiles["filtered_var"],
+                            rf"per-agent PF, filtered inputs + variance ($N = {N_PARTICLES}$, common seed)",
+                            {**ESTIMATE_STYLE, "color": METHOD_COLORS["filtered_var"]},
+                            peak=kalman_profiles["filtered_var"].max())],
+            true_self_weight, rf"$\lambda$ profiles by neighbour-input mode {sigma_m_title}",
+            width_level=WIDTH_DROP, figsize=(8, 4.8), legend_fontsize=8.5,
+        ),
+    ]
     return argmaxes, widths, figure_paths
 
 
@@ -194,60 +183,39 @@ def check_bias_vs_measurement_noise(config: Config, W: np.ndarray) -> tuple[dict
             print(f"{noise_sd:>6}  {method:<13} {row['mean']:>7.3f} ± {row['sd']:.3f}  "
                   f"{row['mean'] - true_self_weight:>+7.3f}  {row['width']:>6.3f}")
 
-    noise_levels = np.array(MEASUREMENT_NOISE_LEVELS)
-    figure_paths = []
+    def draw_estimates(ax, methods: dict[str, str], offsets: dict[str, float]) -> None:
+        """λ̂ mean ± sd for each method, offset along the log x axis so the error bars do not overlap."""
+        for method, label in methods.items():
+            ax.errorbar(np.array(MEASUREMENT_NOISE_LEVELS) * offsets[method],
+                        [summary[level][method]["mean"] for level in MEASUREMENT_NOISE_LEVELS],
+                        yerr=[summary[level][method]["sd"] for level in MEASUREMENT_NOISE_LEVELS],
+                        color=METHOD_COLORS[method], capsize=3, label=label, **POINTS_STYLE)
+        mark_true_value(ax, true_self_weight, axis="y")
+        set_log_ticks(ax, MEASUREMENT_NOISE_LEVELS)
+
+    noise_xlabel = r"measurement noise $\sigma_m$"
+    estimate_ylabel = r"$\hat\lambda$ (mean $\pm$ sd over datasets)"
+    datasets_title = dataset_title(config, rf"{len(DATASET_SEEDS)} datasets per $\sigma_m$")
 
     # Original figure: joint vs per-agent Kalman with observed (plug-in) inputs.
     fig, ax = plt.subplots(figsize=(7, 4.5))
-    for name, method, offset in [("joint Kalman", "joint", 0.96), ("per-agent Kalman", "observed", 1.04)]:
-        ax.errorbar(noise_levels * offset, [summary[level][method]["mean"] for level in MEASUREMENT_NOISE_LEVELS],
-                    yerr=[summary[level][method]["sd"] for level in MEASUREMENT_NOISE_LEVELS],
-                    color=METHOD_COLORS[method], linewidth=1.6, marker="o", markersize=6, capsize=3, label=name)
-    ax.axhline(true_self_weight, color="0.5", linestyle=":", linewidth=1.2, label=rf"true $\lambda = {true_self_weight}$")
-    ax.set_xscale("log")
-    ax.set_xticks(noise_levels, [f"{level:g}" for level in noise_levels])
-    ax.minorticks_off()
-    ax.set_xlabel(r"measurement noise $\sigma_m$")
-    ax.set_ylabel(r"$\hat\lambda$ (mean $\pm$ sd over datasets)")
-    ax.set_title(rf"Plug-in bias vs. measurement noise ($n = {config.network.n_agents}$, "
-                 rf"$T = {config.simulation.T}$, {len(DATASET_SEEDS)} datasets per $\sigma_m$)")
-    ax.legend(frameon=False)
-    ax.grid(alpha=0.25)
-    fig.tight_layout()
-    figure_paths.append(OUTPUT_DIR / "bias_vs_measurement_noise.png")
-    fig.savefig(figure_paths[-1], dpi=150)
-    plt.close(fig)
+    draw_estimates(ax, {"joint": "joint Kalman", "observed": "per-agent Kalman"}, {"joint": 0.96, "observed": 1.04})
+    style_axes(ax, noise_xlabel, estimate_ylabel, f"Plug-in bias vs. measurement noise {datasets_title}")
+    figure_paths = [save_figure(fig, OUTPUT_DIR / "bias_vs_measurement_noise.png")]
 
-    # New figure: every method, λ̂ (left) and profile width (right).
-    offsets = dict(zip(METHODS, (0.94, 0.98, 1.02, 1.06)))
+    # Every method: λ̂ (left) and profile width (right).
     fig, (estimate_ax, width_ax) = plt.subplots(1, 2, figsize=(12, 4.6))
+    draw_estimates(estimate_ax, METHOD_LABELS, dict(zip(METHODS, (0.94, 0.98, 1.02, 1.06))))
     for method in METHODS:
-        shifted_levels = noise_levels * offsets[method]
-        estimate_ax.errorbar(shifted_levels, [summary[level][method]["mean"] for level in MEASUREMENT_NOISE_LEVELS],
-                             yerr=[summary[level][method]["sd"] for level in MEASUREMENT_NOISE_LEVELS],
-                             color=METHOD_COLORS[method], linewidth=1.6, marker="o", markersize=6, capsize=3,
-                             label=METHOD_LABELS[method])
-        width_ax.plot(noise_levels, [summary[level][method]["width"] for level in MEASUREMENT_NOISE_LEVELS],
-                      color=METHOD_COLORS[method], linewidth=1.6, marker="o", markersize=6, label=METHOD_LABELS[method])
-    estimate_ax.axhline(true_self_weight, color="0.5", linestyle=":", linewidth=1.2,
-                        label=rf"true $\lambda = {true_self_weight}$")
-    for ax in (estimate_ax, width_ax):
-        ax.set_xscale("log")
-        ax.set_xticks(noise_levels, [f"{level:g}" for level in noise_levels])
-        ax.minorticks_off()
-        ax.set_xlabel(r"measurement noise $\sigma_m$")
-        ax.grid(alpha=0.25)
-    estimate_ax.set_ylabel(r"$\hat\lambda$ (mean $\pm$ sd over datasets)")
-    estimate_ax.set_title(r"Estimate of $\lambda$")
-    estimate_ax.legend(frameon=False, fontsize=8.5)
-    width_ax.set_ylabel(rf"profile width: range of $\lambda$ with $\ell \geq \ell_{{\max}} - {WIDTH_DROP:g}$")
-    width_ax.set_title("Profile width (smaller = more confident)")
-    fig.suptitle(rf"Neighbour-input modes vs. joint Kalman ($n = {config.network.n_agents}$, "
-                 rf"$T = {config.simulation.T}$, {len(DATASET_SEEDS)} datasets per $\sigma_m$)")
-    fig.tight_layout()
-    figure_paths.append(OUTPUT_DIR / "bias_vs_measurement_noise_by_input_mode.png")
-    fig.savefig(figure_paths[-1], dpi=150)
-    plt.close(fig)
+        width_ax.plot(MEASUREMENT_NOISE_LEVELS, [summary[level][method]["width"] for level in MEASUREMENT_NOISE_LEVELS],
+                      color=METHOD_COLORS[method], label=METHOD_LABELS[method], **POINTS_STYLE)
+    set_log_ticks(width_ax, MEASUREMENT_NOISE_LEVELS)
+    style_axes(estimate_ax, noise_xlabel, estimate_ylabel, r"Estimate of $\lambda$", legend_fontsize=8.5)
+    style_axes(width_ax, noise_xlabel,
+               rf"profile width: range of $\lambda$ with $\ell \geq \ell_{{\max}} - {WIDTH_DROP:g}$",
+               "Profile width (smaller = more confident)", legend=False)
+    fig.suptitle(f"Neighbour-input modes vs. joint Kalman {datasets_title}")
+    figure_paths.append(save_figure(fig, OUTPUT_DIR / "bias_vs_measurement_noise_by_input_mode.png"))
     return summary, figure_paths
 
 
@@ -257,8 +225,7 @@ def main() -> None:
     save_config(config, OUTPUT_DIR / "config.yaml")
 
     dataset = simulate.simulate(config)
-    print(f"Dataset: n = {config.network.n_agents}, T = {config.simulation.T}, "
-          f"σ_e = {config.model.expression_noise_sd}, σ_m = {config.model.measurement_noise_sd}")
+    print(describe_dataset(config))
 
     argmaxes, widths, profile_paths = check_profiles(config, dataset)
     bias_summary, bias_paths = check_bias_vs_measurement_noise(config, dataset["W"])

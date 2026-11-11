@@ -1,17 +1,13 @@
 # Helpers shared by the check scripts: paths, base config, output folders and λ profiles.
+# Figure helpers are in checks/plotting.py.
 
 from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 
-import matplotlib
 import numpy as np
 
 from src.config import Config, ModelParams, load_config
-
-# Check scripts only write figures to files. matplotlib switches backend even if pyplot was
-# already imported, as long as no figure is open yet.
-matplotlib.use("Agg")
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 BASE_CONFIG_PATH = REPO_ROOT / "configs" / "degroot_base.yaml"
@@ -22,6 +18,12 @@ PROFILE_WIDTH_DROP = 2.0             # profile width = range of λ within this m
 def load_base_config() -> Config:
     """The baseline config (configs/degroot_base.yaml); each check saves the config it uses next to its results."""
     return load_config(BASE_CONFIG_PATH)
+
+
+def describe_dataset(config: Config) -> str:
+    """One line with the dataset's size and noise levels, printed at the top of each check."""
+    return (f"Dataset: n = {config.network.n_agents}, T = {config.simulation.T}, "
+            f"σ_e = {config.model.expression_noise_sd}, σ_m = {config.model.measurement_noise_sd}")
 
 
 def with_model_params(config: Config, **changes: float) -> Config:
