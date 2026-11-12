@@ -7,7 +7,7 @@ Nov 8, 2026 · @Guilherme
 The project builds a hidden-state algorithm that learns opinion dynamics from limited, noisy data: latent opinions evolve on a network, people only see each other's expressions, and researchers only see noisy labels of those expressions. Parameters are inferred with a particle-filter likelihood, with the hidden trajectories integrated out.
 
 - **Current phase:** Phase 1, scalar hidden opinions on simulated data.
-- **Next action:** implement PMMH (correlated version) on the per-agent particle filter with corrected inputs, and validate its posterior for $(\lambda, \sigma_p, \sigma_e)$ against Kalman-likelihood MCMC on the baseline, for both `filtered` and `filtered_var` inputs.
+- **Next action:** coverage study over repeated datasets to test whether process noise $\sigma_p$ and expression noise $\sigma_e$ are separated correctly (see 1.3), and to choose the default input mode.
 - **Repository:** config loader, DeGroot model, simulator, joint and per-agent Kalman and particle filters, and check scripts in place.
 
 ## Phase 1 — Scalar hidden opinions vs. classical models
@@ -67,7 +67,8 @@ $$
 ### 1.3 Evaluation
 
 - [x] Correctness: particle-filter log-likelihood matches the joint Kalman filter (linear model, continuous $Y$)
-- [ ] PMMH vs. Kalman-MCMC reference posterior (linear model): same posterior means, intervals and correlations; standard and correlated PMMH; `filtered` and `filtered_var` inputs; interval coverage over repeated datasets decides the default input mode
+- [x] PMMH vs. Kalman-MCMC reference posterior (linear model): correlated PMMH ($N = 100$, $\rho = 0.99$) reproduces exact MH on the same per-agent likelihood (`check_pmmh.py`, means within 0.7 Monte Carlo s.e.)
+- [ ] Coverage study, separating process noise from expression noise. Motivation (notebook 02, one dataset): the per-agent posteriors get the total noise $\tau^2 = \sigma_p^2 + \sigma_e^2$ right ($0.0049$ vs. $0.0047$ exact, truth $0.005$) but split it wrongly ($\sigma_p \approx 0.06$, $\sigma_e \approx 0.035$–$0.04$ vs. exact $0.045$, $0.052$; truth $0.05$ each). Design: 50 datasets on the baseline network ($\sigma_m = 0.1$ fixed); exact MH on the per-agent Kalman likelihood with `filtered` and `filtered_var` inputs for all 50, and on the joint Kalman likelihood for a subset of about 20 (cost); for $\lambda$, $\sigma_p$, $\sigma_e$, $\tau^2$ and the share $f = \sigma_e^2/\tau^2$, report the share of datasets whose 95% interval covers the truth and the mean bias. Expected: $\tau^2$ well covered, $f$ biased in the per-agent model. Outcome decides the default input mode and whether block filters are needed to separate $\sigma_p$ from $\sigma_e$
 - [ ] Parameter recovery vs. number of steps $T$, number of agents $n$ and noise level: bias, interval coverage, smallest usable $T$
 - [ ] Cost of approximations: discrete observation and plug-in inputs, version (a) vs. (b). Raw and corrected plug-in inputs measured with other parameters at truth (see Findings in 1.2); still to measure under joint estimation with PMMH and for the discrete observation
 - [ ] Identifiability: $\sigma_e$ vs. influence parameters; multimodal posteriors under bounded confidence
@@ -152,7 +153,7 @@ The repository starts small and grows one verified step at a time.
 | `checks/check_correlated_pf.py` | Unbiasedness, smoothness and correlation payoff of the noise-driven filter | Implemented |
 | `checks/check_pmmh.py` | Posteriors of $(\lambda, \sigma_p, \sigma_e)$: exact MH on joint and per-agent Kalman vs. correlated and standard PMMH | Implemented |
 | `notebooks/01_sanity_checks.ipynb` | Sanity checks of the model layer (classical limit, noise, reproducibility) | DeGroot, simulator and Kalman checks passing |
-| `notebooks/02_simulate_and_filter.ipynb` | Simulation and filtering exploration and plots | Empty |
+| `notebooks/02_simulate_and_filter.ipynb` | Narrative of the method so far: data-generating process, filtering, likelihood landscape, plug-in bias, posterior inference | Filled |
 
 - Pass `rng = np.random.default_rng(seed)` explicitly; no global randomness.
 - Separate random streams for network and data (`SeedSequence(seed).spawn(2)`), so many datasets can be drawn on the same network.
@@ -172,6 +173,7 @@ Decisions are logged newest first; add a row whenever the plan changes.
 
 | Date | Decision |
 | --- | --- |
+| 2026-11-12 | Next step is a coverage study over repeated datasets: per-agent posteriors recover $\sigma_p^2 + \sigma_e^2$ but appear to misallocate it between process and expression noise |
 | 2026-11-10 | Corrected neighbour inputs fix the per-agent filter up to the baseline noise ($\hat\lambda \approx 0.28$ vs. $0.57$ with raw labels at $\sigma_m = 0.1$); $\sigma_m = 0.2$ recorded as a known limitation. PMMH will be the correlated version from the start, with sorted per-agent resampling and pre-drawn random numbers |
 | 2026-11-10 | Shared code gets one home: observation formulas in `src/observation.py` (split from `model.py`), input modes in `src/neighbour_inputs.py`, check helpers in `checks/common.py` |
 | 2026-11-10 | Added Phase 1.5, heterogeneous agents (per-agent $\lambda_i$, FJ zealots, per-agent $\epsilon_i$), after corrected inputs and PMMH and before Phase 2; PMMH validated against Kalman-likelihood MCMC |
@@ -192,7 +194,8 @@ Decisions are logged newest first; add a row whenever the plan changes.
 Open questions:
 
 - [ ] Why does `filtered_var` become biased low and too narrow at $\sigma_m = 0.2$, and does joint estimation of $\sigma_p$, $\sigma_e$ change the picture?
-- [ ] Which input mode (`filtered` or `filtered_var`) gives correct posterior coverage under PMMH?
+- [ ] Which input mode (`filtered` or `filtered_var`) gives correct posterior coverage?
+- [ ] Can the per-agent filter separate process noise from expression noise, or does it only identify their sum? Hypothesis: with $\lambda = 0.3$ an agent's own process noise fades quickly, so within one agent's series both noises look nearly white; the network propagation that separates them is mostly lost when neighbours' states are replaced by point estimates
 - [ ] Can $\sigma_e$ and $\sigma_m$ be recovered jointly, or must $\sigma_m$ stay fixed?
 - [ ] Time step size for real data
 - [ ] Real dataset for Phase 3
