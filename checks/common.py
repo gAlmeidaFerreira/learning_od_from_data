@@ -1,4 +1,5 @@
-# Helpers shared by the check scripts: paths, base config, output folders and λ profiles.
+# Helpers shared by the check scripts: paths, base config, output folders, λ profiles and the
+# PMMH likelihood of the noise-driven per-agent particle filter.
 # Figure helpers are in checks/plotting.py.
 
 from collections.abc import Callable
@@ -8,9 +9,12 @@ from pathlib import Path
 import numpy as np
 
 from src.config import Config, ModelParams, load_config
+from src.inference import InferenceConfig
+from src.particle_filter import draw_per_agent_noise, per_agent_pf_loglik_given_noise
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 BASE_CONFIG_PATH = REPO_ROOT / "configs" / "degroot_base.yaml"
+INFERENCE_CONFIG_PATH = REPO_ROOT / "configs" / "inference_base.yaml"
 CHECK_RESULTS_DIR = REPO_ROOT / "results" / "checks"   # each check writes to CHECK_RESULTS_DIR / <name>
 PROFILE_WIDTH_DROP = 2.0             # profile width = range of λ within this many log-units of the maximum
 
@@ -29,6 +33,27 @@ def describe_dataset(config: Config) -> str:
 def with_model_params(config: Config, **changes: float) -> Config:
     """Copy of config with some model parameters changed, e.g. with_model_params(config, measurement_noise_sd=0.2)."""
     return replace(config, model=replace(config.model, **changes))
+
+
+def per_agent_pf_loglik_function(
+    config: Config, dataset: dict, inference_config: InferenceConfig, return_filtered: bool = False
+):
+    """(loglik_fn(params, u), draw_noise(rng)) for the noise-driven per-agent PF, as pseudo_marginal_mh takes them.
+
+    N and the input mode come from inference_config.pmmh. With return_filtered, loglik_fn returns
+    (loglik, filtered) as needed with an OpinionAccumulator.
+    """
+    y, W = dataset["y"], dataset["W"]
+    n_steps, n_agents = y.shape
+
+    def loglik_fn(params, noise):
+        return per_agent_pf_loglik_given_noise(y, W, params, config.simulation, noise, return_filtered,
+                                               input_mode=inference_config.pmmh.input_mode)
+
+    def draw_noise(rng):
+        return draw_per_agent_noise(n_steps, inference_config.pmmh.n_particles, n_agents, rng)
+
+    return loglik_fn, draw_noise
 
 
 def self_weight_profile(
