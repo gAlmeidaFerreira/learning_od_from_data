@@ -7,7 +7,7 @@ Nov 8, 2026 · @Guilherme
 The project builds a hidden-state algorithm that learns opinion dynamics from limited, noisy data: latent opinions evolve on a network, people only see each other's expressions, and researchers only see noisy labels of those expressions. Parameters are inferred with a particle-filter likelihood, with the hidden trajectories integrated out.
 
 - **Current phase:** Phase 1, scalar hidden opinions on simulated data.
-- **Next action:** coverage study over repeated datasets to test whether process noise $\sigma_p$ and expression noise $\sigma_e$ are separated correctly (see 1.3), and to choose the default input mode.
+- **Next action:** hidden-opinion estimation module (`src/states.py`, see 1.2), then the coverage study over repeated datasets to test whether process noise $\sigma_p$ and expression noise $\sigma_e$ are separated correctly (see 1.3), and to choose the default input mode.
 - **Repository:** config loader, DeGroot model, simulator, joint and per-agent Kalman and particle filters, and check scripts in place.
 - **Thesis contributions** (as stated to the supervisor, 2026-11-18):
     1. Inference under noisy dynamics: random shocks to opinions that the network does not explain (news, outside events), and an estimated noise between what people think and the score that measures it.
@@ -46,6 +46,13 @@ $$
 - Parameters: grid or optimizer first, then IF2 to locate the high-likelihood region, then PMMH for the joint posterior $p(\lambda, \sigma_p, \sigma_e \mid Y)$: all parameters estimated together, credible intervals and correlations, and opinion trajectories with parameter uncertainty integrated out.
 - PMMH reference: for linear models, run MCMC with the exact Kalman likelihood to get a reference posterior; PMMH with the particle filter must reproduce it. Tune $N$ so that the sd of $\log\hat p(Y \mid \psi)$ is about 1–1.5 (standard PMMH), or so that the sd of the log-likelihood *ratio* between current and proposed points is about 1 (correlated PMMH).
 - Correlated PMMH (implement from the start): all random numbers used by the particle filter are one Gaussian array $u$ (initial draws, process noise, `filtered_var` input draws, and resampling uniforms obtained as $\Phi(z)$ of Gaussians). Each iteration proposes $\psi'$ together with $u' = \rho\, u + \sqrt{1-\rho^2}\,\varepsilon$, $\varepsilon \sim \mathcal N(0, I)$, $\rho \approx 0.99$–$0.999$, and accepts both or neither. Likelihood estimates at $\psi$ and $\psi'$ then share most of their noise, so the ratio is far less noisy and far fewer particles are needed. Resampling breaks the correlation unless particles are sorted first; in the per-agent filter each state is scalar, so sorting each column by $x$ before systematic resampling is enough. The filter therefore takes pre-drawn arrays instead of an `rng`; standard PMMH is the special case $\rho = 0$, and both are validated against the Kalman-MCMC reference.
+- Hidden opinions. With parameter uncertainty integrated out, $p(x_t \mid Y) \approx \frac1K\sum_k p(x_t \mid Y_{1:t}, \theta^{(k)})$ over posterior draws $\theta^{(k)}$, so the estimate and its variance are
+
+$$
+\hat x_t = \frac1K\sum_k m_t^{(k)}, \qquad \mathrm{Var}_t = \frac1K\sum_k P_t^{(k)} + \mathrm{Var}_k\big(m_t^{(k)}\big)
+$$
+
+  (state plus parameter uncertainty), where $m_t^{(k)}$, $P_t^{(k)}$ are the filtered mean and variance at $\theta^{(k)}$. Two routes share one function in `src/states.py`: (a) accumulated during PMMH, at no extra cost, as running sums of $m$, $m^2$ and $P$ after burn-in, kept with the current state exactly like its likelihood estimate (replaced only on acceptance, counted again on rejection); (b) re-run any filter at a set of draws, for checks and later for smoothing. The filters return `filtered_var` next to `filtered_mean`. First result (notebook data, particle filter at 20 draws of the per-agent posterior): RMSE $0.053$, 96.5% of true opinions inside $\pm 2$ sd, parameter uncertainty about 1% of the variance. The estimate is filtered ($Y_{1:t}$) while $\theta^{(k)}$ uses all of $Y_{1:T}$; a smoother would give the consistent $p(x_t \mid Y_{1:T})$.
 - PMMH is only as exact as the likelihood it uses: run it on the per-agent filter only after the input bias is fixed.
 - In an agent's own emission, expression and measurement noise integrate out in closed form, with total variance $\sigma_e^2 + \sigma_m^2$.
 - Neighbours' expressions are hidden inputs: (a) per-agent filter with plug-in inputs from $Y$, fast but biased; (b) joint filter over all agents on a small network, exact reference.
@@ -76,6 +83,7 @@ $$
 - [x] Correctness: particle-filter log-likelihood matches the joint Kalman filter (linear model, continuous $Y$)
 - [x] PMMH vs. Kalman-MCMC reference posterior (linear model): correlated PMMH ($N = 100$, $\rho = 0.99$) reproduces exact MH on the same per-agent likelihood (`check_pmmh.py`, means within 0.7 Monte Carlo s.e.)
 - [ ] Coverage study, separating process noise from expression noise. Motivation (notebook 02, one dataset): the per-agent posteriors get the total noise $\tau^2 = \sigma_p^2 + \sigma_e^2$ right ($0.0049$ vs. $0.0047$ exact, truth $0.005$) but split it wrongly ($\sigma_p \approx 0.06$, $\sigma_e \approx 0.035$–$0.04$ vs. exact $0.045$, $0.052$; truth $0.05$ each). Design: 50 datasets on the baseline network ($\sigma_m = 0.1$ fixed); exact MH on the per-agent Kalman likelihood with `filtered` and `filtered_var` inputs for all 50, and on the joint Kalman likelihood for a subset of about 20 (cost); for $\lambda$, $\sigma_p$, $\sigma_e$, $\tau^2$ and the share $f = \sigma_e^2/\tau^2$, report the share of datasets whose 95% interval covers the truth and the mean bias. Expected: $\tau^2$ well covered, $f$ biased in the per-agent model. Outcome decides the default input mode and whether block filters are needed to separate $\sigma_p$ from $\sigma_e$
+- [ ] Hidden-opinion estimates (`check_states.py`): accumulated during exact MH agrees with re-running the filter at the chain's draws; under correlated PMMH, RMSE against the true $x$ and coverage of $\pm 2$ sd bands near 95%
 - [ ] Parameter recovery vs. number of steps $T$, number of agents $n$ and noise level: bias, interval coverage, smallest usable $T$
 - [ ] Cost of approximations: discrete observation and plug-in inputs, version (a) vs. (b). Raw and corrected plug-in inputs measured with other parameters at truth (see Findings in 1.2); still to measure under joint estimation with PMMH and for the discrete observation
 - [ ] Identifiability: $\sigma_e$ vs. influence parameters; multimodal posteriors under bounded confidence
@@ -273,7 +281,8 @@ The repository starts small and grows one verified step at a time.
 | `src/simulate.py` | Ground truth $x$, $s$, $Y$ and posting mask $P$ | Implemented (Gaussian x0, save/load) |
 | `src/kalman.py` | Exact Kalman log-likelihood (linear-Gaussian reference) | Joint and per-agent Kalman log-likelihood; per-agent with observed / filtered / filtered_var neighbour inputs |
 | `src/inference.py` | Pseudo-marginal MH: exact MH on Kalman likelihoods, correlated PMMH on the particle filter | Implemented |
-| `src/particle_filter.py` | Log-likelihood estimator | Joint and per-agent filters (continuous observation); per-agent with observed / filtered / filtered_var neighbour inputs; noise-driven per-agent filter with sorted resampling (for correlated PMMH) |
+| `src/particle_filter.py` | Log-likelihood estimator | Joint and per-agent filters (continuous observation); per-agent with observed / filtered / filtered_var neighbour inputs; noise-driven per-agent filter with sorted resampling (for correlated PMMH); `filtered_var` output planned |
+| `src/states.py` | Hidden-opinion estimates with parameter uncertainty: `mixture_moments`, `OpinionAccumulator` (used inside PMMH), `estimate_hidden_opinions` (re-run at posterior draws) | Planned |
 | `checks/check_joint_filter.py` | Joint particle filter vs. joint Kalman filter | PF vs Kalman comparison |
 | `checks/common.py` | Shared helpers for the check scripts (paths, base config, $\lambda$ profiles, profile width) | Implemented |
 | `checks/plotting.py` | Shared figure helpers for the check scripts (style, $\lambda$-profile figure, log ticks, saving) | Implemented |
@@ -281,6 +290,7 @@ The repository starts small and grows one verified step at a time.
 | `checks/check_plugin_bias.py` | Plug-in bias: per-agent vs. joint Kalman estimates of $\lambda$ | Implemented |
 | `checks/check_correlated_pf.py` | Unbiasedness, smoothness and correlation payoff of the noise-driven filter | Implemented |
 | `checks/check_pmmh.py` | Posteriors of $(\lambda, \sigma_p, \sigma_e)$: exact MH on joint and per-agent Kalman vs. correlated and standard PMMH | Implemented |
+| `checks/check_states.py` | Hidden-opinion estimates: accumulated vs. re-run, RMSE and coverage against the true $x$ | Planned |
 | `notebooks/01_sanity_checks.ipynb` | Sanity checks of the model layer (classical limit, noise, reproducibility) | DeGroot, simulator and Kalman checks passing |
 | `notebooks/02_simulate_and_filter.ipynb` | Narrative of the method so far: data-generating process, filtering, likelihood landscape, plug-in bias, posterior inference | Filled |
 | `src/baselines/kolic_benchmark.py` | Runs the public code of Kolic et al. (likelihood-based inference B1, ensemble Kalman filter B2) on their benchmark and loads their outputs | Planned |
@@ -311,6 +321,7 @@ Decisions are logged newest first; add a row whenever the plan changes.
 
 | Date | Decision |
 | --- | --- |
+| 2026-11-23 | Hidden opinions estimated in `src/states.py`: filtered means and variances accumulated during PMMH (kept with the current state, running sums after burn-in, $O(nT)$ memory), with a re-run route at posterior draws for checks and smoothing; variance by the law of total variance (state plus parameter uncertainty); the particle filters return `filtered_var`. Done before the coverage study |
 | 2026-11-18 | Validation and baselines aligned with the revised proposal (§4.4–4.5): three external baselines, B1 likelihood-based inference and B2 ensemble Kalman filter run with Kolic et al.'s code on their benchmark and compared on state error only, B3 neural posterior estimation compared on parameter bias, coverage and model choice; oracle and labels-as-opinions kept as internal references; whole-path MAP and an EnKF on my own model dropped (optional only); simulation-based calibration and misspecified-measurement-layer test added to 1.3 |
 | 2026-11-18 | B5 (now B3) uses a graph-neural-network summary of the label matrix (Dyer et al. 2022) instead of hand-picked summaries, which stay as an ablation; cited as NPE (Papamakarios & Murray 2016) applied to ABMs (Dyer et al. 2024) |
 | 2026-11-18 | After supervisor feedback: four stated contributions, with model selection among DeGroot, FJ and bounded confidence as a headline (new 1.7, in the July 2027 paper); neural simulation-based inference (NPE) added as baseline B5, SINN and graph diffusion networks cited only; Reddit climate dataset of Antelmi et al. (2026) fixed for Phase 3; heterogeneous agents moved after the July paper |
@@ -342,5 +353,6 @@ Open questions:
 - [ ] Which input mode (`filtered` or `filtered_var`) gives correct posterior coverage?
 - [ ] Can the per-agent filter separate process noise from expression noise, or does it only identify their sum? Hypothesis: with $\lambda = 0.3$ an agent's own process noise fades quickly, so within one agent's series both noises look nearly white; the network propagation that separates them is mostly lost when neighbours' states are replaced by point estimates
 - [ ] Can $\sigma_e$ and $\sigma_m$ be recovered jointly, or must $\sigma_m$ stay fixed?
+- [ ] Are filtered hidden-opinion estimates enough, or is a smoother (RTS for Kalman, backward simulation for the particle filter) needed for $p(x_t \mid Y_{1:T})$?
 - [ ] Time step size for real data
 - [x] Real dataset for Phase 3: Antelmi et al. (2026) Reddit climate dataset
