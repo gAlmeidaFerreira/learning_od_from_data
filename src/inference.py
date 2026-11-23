@@ -19,6 +19,7 @@ import yaml
 from src.config import ModelParams
 from src.neighbour_inputs import INPUT_MODES, InputMode
 from src.particle_filter import crank_nicolson
+from src.states import OpinionAccumulator
 
 PARAMETER_NAMES = ("self_weight", "process_noise_sd", "expression_noise_sd")   # ψ = (λ, σ_p, σ_e), in θ order
 
@@ -168,7 +169,7 @@ def log_prior(model_params: ModelParams, priors: Priors) -> float:
 # Sampler
 
 def pseudo_marginal_mh(
-    loglik_fn: Callable[[ModelParams, Any], float],
+    loglik_fn: Callable[[ModelParams, Any], Any],
     theta0: np.ndarray,
     model_params: ModelParams,
     priors: Priors,
@@ -177,6 +178,7 @@ def pseudo_marginal_mh(
     *,
     draw_noise: Callable[[np.random.Generator], Any] | None = None,
     rho: float = 0.0,
+    accumulator: OpinionAccumulator | None = None,
 ) -> dict:
     """Random-walk (pseudo-marginal) MH on θ = (logit λ, log σ_p, log σ_e).
 
@@ -184,6 +186,9 @@ def pseudo_marginal_mh(
     random numbers u. If draw_noise is None the likelihood is treated as exact; otherwise
     u starts at draw_noise(rng) and moves by u' = crank_nicolson(u, rho, rng) together with θ.
     model_params supplies the fields that are not inferred (σ_m, dynamics, ...).
+    With an accumulator, loglik_fn must return (loglik, filtered), filtered a dict with
+    "filtered_mean" and "filtered_var" (T, n); the current state's filtered output is added to the
+    accumulator at every iteration after burn-in, giving the hidden opinions with ψ integrated out.
     Returns {"theta", "params" (λ, σ_p, σ_e), "loglik", "proposed_loglik", "accepted",
     "proposal_cov", "runtime_s"}; arrays have one row per iteration, burn-in included.
     """
@@ -203,7 +208,12 @@ def pseudo_marginal_mh(
     theta = np.asarray(theta0, dtype=float)
     params = from_unconstrained(theta, model_params)
     noise = draw_noise(rng) if draw_noise is not None else None
-    loglik = loglik_fn(params, noise)
+    # With an accumulator, loglik_fn also returns the filter's output; filtered then travels with
+    # the current state exactly like loglik (set here, replaced only on acceptance).
+    def evaluate(params: ModelParams, noise: Any) -> tuple[float, dict | None]:
+        return loglik_fn(params, noise) if accumulator is not None else (loglik_fn(params, noise), None)
+
+    loglik, filtered = evaluate(params, noise)
     # Target density in θ: p(Y | ψ(θ)) p(ψ(θ)) |dψ/dθ|. The chain moves on θ, but the prior is
     # stated on ψ, so the change of variables adds the log-Jacobian; forgetting it (or using
     # the inverse map's Jacobian) silently changes the prior and biases the posterior.
@@ -216,18 +226,25 @@ def pseudo_marginal_mh(
         proposed_log_prior_term = log_prior(proposed_params, priors) + log_jacobian(proposed_theta)
 
         if np.isfinite(proposed_log_prior_term):
-            proposed_loglik = loglik_fn(proposed_params, proposed_noise)
+            proposed_loglik, proposed_filtered = evaluate(proposed_params, proposed_noise)
             proposed_loglik_trace[iteration] = proposed_loglik
             # The random walk is symmetric in θ, so the proposal densities cancel.
             log_ratio = proposed_loglik - loglik + proposed_log_prior_term - log_prior_term
             if np.log(rng.uniform()) < log_ratio:   # accept (θ', u', loglik') together
                 theta, noise, params = proposed_theta, proposed_noise, proposed_params
-                loglik, log_prior_term = proposed_loglik, proposed_log_prior_term
+                loglik, log_prior_term, filtered = proposed_loglik, proposed_log_prior_term, proposed_filtered
                 accepted[iteration] = True
 
         theta_trace[iteration] = theta
         params_trace[iteration] = [getattr(params, name) for name in PARAMETER_NAMES]
         loglik_trace[iteration] = loglik
+
+        # Count the current state at every kept iteration, rejected ones included (the state is then
+        # counted again). Storing the output of rejected proposals instead would average over the
+        # proposal distribution, not the posterior, and bias the estimate.
+        # filtered is a dict whenever an accumulator is given; the None check only narrows its type.
+        if accumulator is not None and filtered is not None and iteration >= mcmc_cfg.burn_in:
+            accumulator.update(filtered["filtered_mean"], filtered["filtered_var"])
 
         # Adaptive Metropolis (Haario et al.) during burn-in only; frozen afterwards, so the
         # kept samples come from a fixed, valid MH kernel.

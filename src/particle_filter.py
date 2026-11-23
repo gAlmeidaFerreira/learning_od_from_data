@@ -140,6 +140,7 @@ def _run_per_agent_filter(
     log_weights = np.full((n_particles, n_agents), uniform_log_weight)
     per_agent_loglik = np.zeros(n_agents)
     filtered_mean = np.empty((n_steps, n_agents))
+    filtered_var = np.empty((n_steps, n_agents))
     ess_history = np.empty((n_steps, n_agents))
     n_resamples = np.zeros(n_agents, dtype=int)
     # Neighbours' expressions and their variance, set at the end of every step; first used at t = 1.
@@ -170,13 +171,15 @@ def _run_per_agent_filter(
         weights = np.exp(log_weights)
         ess = 1.0 / np.sum(weights**2, axis=0)
         ess_history[t] = ess
+        # Weighted moments after weighting, before resampling (resampling only adds noise to them).
         opinion_mean = np.sum(weights * opinions, axis=0)
+        opinion_var = np.sum(weights * (opinions - opinion_mean) ** 2, axis=0)
         filtered_mean[t] = opinion_mean
+        filtered_var[t] = opinion_var
 
         if input_mode == "observed":
             neighbour_expressions = y[t]
         else:
-            opinion_var = np.sum(weights * (opinions - opinion_mean) ** 2, axis=0)
             neighbour_expressions, neighbour_expression_var = expression_estimate(
                 opinion_mean, opinion_var, y[t], model_params
             )
@@ -186,7 +189,7 @@ def _run_per_agent_filter(
         n_resamples += resampled
 
     return float(per_agent_loglik.sum()), {
-        "per_agent_loglik": per_agent_loglik, "filtered_mean": filtered_mean,
+        "per_agent_loglik": per_agent_loglik, "filtered_mean": filtered_mean, "filtered_var": filtered_var,
         "ess": ess_history, "n_resamples": n_resamples,
     }
 
@@ -239,7 +242,9 @@ def per_agent_pf_loglik(
     resampled on its own when its ESS < ess_threshold * n_particles. input_mode chooses the
     neighbour input (see the comment above).
     If return_filtered, also returns {"per_agent_loglik": (n,), "filtered_mean": (T, n),
-    "ess": (T, n), "n_resamples": (n,)}; filtered_mean is taken before resampling.
+    "filtered_var": (T, n), "ess": (T, n), "n_resamples": (n,)}; filtered_mean and filtered_var
+    are the weighted mean and variance of x, taken before resampling (same keys as
+    per_agent_kalman_loglik, so the two filters are interchangeable).
     """
     shape = (n_particles, y.shape[1])
 

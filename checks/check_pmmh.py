@@ -24,7 +24,14 @@ from dataclasses import replace
 import matplotlib.pyplot as plt
 import numpy as np
 
-from checks.common import CHECK_RESULTS_DIR, REPO_ROOT, describe_dataset, load_base_config
+from checks.common import (
+    CHECK_RESULTS_DIR,
+    INFERENCE_CONFIG_PATH,
+    REPO_ROOT,
+    describe_dataset,
+    load_base_config,
+    per_agent_pf_loglik_function,
+)
 from checks.plotting import mark_true_value, save_figure, style_axes
 from src import kalman, simulate
 from src.config import Config, save_config
@@ -38,10 +45,9 @@ from src.inference import (
     pseudo_marginal_mh,
     to_unconstrained,
 )
-from src.particle_filter import crank_nicolson, draw_per_agent_noise, per_agent_pf_loglik_given_noise
+from src.particle_filter import crank_nicolson
 
 OUTPUT_DIR = CHECK_RESULTS_DIR / "pmmh"
-INFERENCE_CONFIG_PATH = REPO_ROOT / "configs" / "inference_base.yaml"
 
 CHAINS = {
     "A": "exact MH, joint Kalman",
@@ -57,20 +63,6 @@ PARAMETER_LABELS = {"self_weight": "λ", "process_noise_sd": "σ_p", "expression
 NOISE_CHECK_DRAWS = 50
 NOISE_CHECK_SEED = 2024
 AUTOCORRELATION_LAGS = (1, 10, 50, 100, 200)
-
-
-def per_agent_pf_loglik_function(config: Config, dataset: dict, inference_config: InferenceConfig):
-    """(loglik_fn(params, u), draw_noise(rng)) for the noise-driven per-agent PF."""
-    y, W = dataset["y"], dataset["W"]
-
-    def loglik_fn(params, noise):
-        return per_agent_pf_loglik_given_noise(y, W, params, config.simulation, noise,
-                                               input_mode=inference_config.pmmh.input_mode)
-
-    def draw_noise(rng):
-        return draw_per_agent_noise(y.shape[0], inference_config.pmmh.n_particles, y.shape[1], rng)
-
-    return loglik_fn, draw_noise
 
 
 def run_chain(task: tuple[str, Config, dict, InferenceConfig, np.random.SeedSequence]) -> tuple[str, dict]:
